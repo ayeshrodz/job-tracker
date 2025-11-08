@@ -168,6 +168,23 @@ function AuthScreen({ onAuth }) {
 /* ---------- Job Tracker UI (with attachments) ---------- */
 
 function JobTracker({ user }) {
+  const getToday = () => {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat("en-NZ", {
+      timeZone: "Pacific/Auckland",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+
+    const parts = formatter.formatToParts(now);
+    const year = parts.find((p) => p.type === "year").value;
+    const month = parts.find((p) => p.type === "month").value;
+    const day = parts.find((p) => p.type === "day").value;
+
+    return `${year}-${month}-${day}`;
+  };
+
   const [jobs, setJobs] = useState([]);
   const [attachments, setAttachments] = useState([]); // all attachments for this user
   const [loading, setLoading] = useState(true);
@@ -175,7 +192,7 @@ function JobTracker({ user }) {
     company: "",
     position: "",
     source_url: "",
-    date_found: "",
+    date_found: getToday(),
     description: "",
     applied: false,
     applied_date: "",
@@ -221,7 +238,7 @@ function JobTracker({ user }) {
       company: "",
       position: "",
       source_url: "",
-      date_found: "",
+      date_found: getToday(),
       description: "",
       applied: false,
       applied_date: "",
@@ -232,10 +249,24 @@ function JobTracker({ user }) {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+
+    setForm((prev) => {
+      // Special logic for the "applied" checkbox
+      if (name === "applied") {
+        const applied = checked;
+        return {
+          ...prev,
+          applied,
+          applied_date:
+            applied && !prev.applied_date ? getToday() : prev.applied_date,
+        };
+      }
+
+      return {
+        ...prev,
+        [name]: type === "checkbox" ? checked : value,
+      };
+    });
   };
 
   const handleSubmit = async (e) => {
