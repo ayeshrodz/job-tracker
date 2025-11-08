@@ -24,7 +24,7 @@ async function uploadJobAttachment(file, jobId, userId) {
 
   // Upload to Supabase Storage (this uploads the file)
   const { data, error } = await supabase.storage
-    .from("job-attachments") // 👈 make sure bucket name matches
+    .from("job-attachments")
     .upload(path, file);
 
   if (error) {
@@ -56,7 +56,7 @@ async function uploadJobAttachment(file, jobId, userId) {
 /* ---------- Auth UI ---------- */
 
 function AuthScreen({ onAuth }) {
-  const [mode, setMode] = useState("sign_in"); // "sign_in" | "sign_up"
+  const [mode, setMode] = useState("sign_in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -169,8 +169,8 @@ function AuthScreen({ onAuth }) {
             {loading
               ? "Please wait…"
               : mode === "sign_in"
-              ? "Sign in"
-              : "Create account"}
+                ? "Sign in"
+                : "Create account"}
           </button>
         </form>
       </div>
@@ -178,7 +178,7 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-/* ---------- Job Tracker UI (with caching, search, filter, sort, pagination, responsive list) ---------- */
+/* ---------- Job Tracker UI ---------- */
 
 function JobTracker({ user }) {
   // Cache config
@@ -205,7 +205,7 @@ function JobTracker({ user }) {
   };
 
   const [jobs, setJobs] = useState([]);
-  const [attachments, setAttachments] = useState([]); // all attachment metadata
+  const [attachments, setAttachments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [form, setForm] = useState({
@@ -229,12 +229,12 @@ function JobTracker({ user }) {
   const [appliedFilter, setAppliedFilter] = useState("all");
 
   // Sorting
-  const [sortKey, setSortKey] = useState("applied"); // company, position, date_found, applied, status
-  const [sortDirection, setSortDirection] = useState("desc"); // asc | desc
+  const [sortKey, setSortKey] = useState("date_found");
+  const [sortDirection, setSortDirection] = useState("desc");
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10); // 10, 20, 50
+  const [pageSize, setPageSize] = useState(10);
 
   // Mobile card expansion
   const [expandedJobId, setExpandedJobId] = useState(null);
@@ -302,25 +302,21 @@ function JobTracker({ user }) {
     const age = Date.now() - lastFetch;
 
     if (!cachedJobs && !cachedAttachments) {
-      // No cache at all → initial fetch
       (async () => {
         await fetchJobs();
         await fetchAttachments();
       })();
     } else if (age > CACHE_TTL_MS) {
-      // Cache is stale → revalidate in background (UI still shows cached data)
       (async () => {
         await fetchJobs();
         await fetchAttachments();
       })();
       setLoading(false);
     } else {
-      // Cache is fresh enough → no Supabase calls
       setLoading(false);
     }
   }, []);
 
-  // Reset page when filters/search or page size change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, appliedFilter, pageSize]);
@@ -384,7 +380,7 @@ function JobTracker({ user }) {
         console.error("Error updating job:", error);
       } else {
         resetForm();
-        await fetchJobs(); // also refresh cache
+        await fetchJobs();
         setIsFormOpen(false);
       }
     } else {
@@ -395,7 +391,7 @@ function JobTracker({ user }) {
         console.error("Error inserting job:", error);
       } else {
         resetForm();
-        await fetchJobs(); // refresh jobs + cache
+        await fetchJobs();
         setIsFormOpen(false);
       }
     }
@@ -432,7 +428,6 @@ function JobTracker({ user }) {
         localStorage.setItem(CACHE_JOBS_KEY, JSON.stringify(updated));
         return updated;
       });
-      // Remove any attachments for that job from local cache as well
       setAttachments((prev) => {
         const updated = prev.filter((att) => att.job_id !== id);
         localStorage.setItem(CACHE_ATTACH_KEY, JSON.stringify(updated));
@@ -458,7 +453,6 @@ function JobTracker({ user }) {
   };
 
   const getPublicUrl = (filePath) => {
-    // This does NOT download the file; it just returns a URL string
     const { data } = supabase.storage
       .from("job-attachments")
       .getPublicUrl(filePath);
@@ -470,7 +464,6 @@ function JobTracker({ user }) {
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
   const filteredJobs = jobs.filter((job) => {
-    // text search across a few fields
     const matchesSearch =
       !normalizedSearch ||
       (job.company ?? "").toLowerCase().includes(normalizedSearch) ||
@@ -478,12 +471,10 @@ function JobTracker({ user }) {
       (job.description ?? "").toLowerCase().includes(normalizedSearch) ||
       (job.source_url ?? "").toLowerCase().includes(normalizedSearch);
 
-    // status filter
     const jobStatus = job.status ?? "not_applied";
     const matchesStatus =
       statusFilter === "all" || jobStatus === statusFilter;
 
-    // applied filter
     let matchesApplied = true;
     if (appliedFilter === "applied") {
       matchesApplied = !!job.applied;
@@ -506,7 +497,6 @@ function JobTracker({ user }) {
         return job.applied ? 1 : 0;
       case "date_found":
       default:
-        // ISO date string – safe to compare as string
         return job.date_found ?? "";
     }
   };
@@ -538,14 +528,11 @@ function JobTracker({ user }) {
   const endDisplay = startIndex + visibleJobs.length;
 
   const handleSort = (key) => {
-    // Go back to first page when sort changes
     setCurrentPage(1);
 
     if (sortKey === key) {
-      // Same column – toggle direction
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      // New column – start with ascending
       setSortKey(key);
       setSortDirection("asc");
     }
@@ -560,7 +547,7 @@ function JobTracker({ user }) {
     );
   };
 
-  // Reusable card renderer (used on mobile and desktop “cards” mode)
+  // Card renderer (mobile + desktop cards)
   const renderJobCard = (job, jobAttachments) => {
     const isExpanded = expandedJobId === job.id;
 
@@ -659,7 +646,6 @@ function JobTracker({ user }) {
               </p>
             )}
 
-            {/* File upload */}
             <div>
               <label className="block text-[11px] text-slate-500 mb-1">
                 Attach file (PDF, DOCX, etc.)
@@ -696,7 +682,6 @@ function JobTracker({ user }) {
               />
             </div>
 
-            {/* Attachments list */}
             {jobAttachments.length > 0 && (
               <div className="space-y-1">
                 {jobAttachments.map((att) => (
@@ -788,7 +773,7 @@ function JobTracker({ user }) {
       {/* Add / Edit Job Modal */}
       {isFormOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4">
-          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-slate-200 p-6 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-slate-200 p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold">
@@ -1024,25 +1009,27 @@ function JobTracker({ user }) {
                 <option value="not_applied_only">Not applied only</option>
               </select>
 
-              {/* Sort controls (helpful on mobile) */}
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
-              >
-                <option value="date_found">Sort: Date</option>
-                <option value="company">Sort: Company</option>
-                <option value="position">Sort: Position</option>
-                <option value="applied">Sort: Applied</option>
-                <option value="status">Sort: Status</option>
-              </select>
+              {/* Sort controls */}
+              <div className="md:inline-flex items-center gap-1 border-l border-slate-200 pl-2 ml-1">
+                <span className="text-[11px] text-slate-400 mr-1">Sort</span>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
-                }
-                className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm hover:bg-slate-50"
+                {/* Sort controls (helpful on mobile) */}
+                <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500
+    focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+                >
+                  <option value="date_found">Date</option>
+                  <option value="company">Company</option>
+                  <option value="position">Position</option>
+                  <option value="applied">Applied</option>
+                  <option value="status">Status</option>
+                </select>
+              </div>
+              <button type="button" onClick={() =>
+                setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+              }
+                className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm
+  hover:bg-slate-50"
                 title="Toggle sort direction"
               >
                 {sortDirection === "asc" ? "↑" : "↓"}
@@ -1213,7 +1200,6 @@ function JobTracker({ user }) {
                                   </button>
                                 </div>
 
-                                {/* File upload */}
                                 <div className="mt-1">
                                   <label className="block text-[11px] text-slate-500 mb-1">
                                     Attach file (PDF, DOCX, etc.)
@@ -1236,18 +1222,17 @@ function JobTracker({ user }) {
                                         console.error(error);
                                         alert("Failed to upload attachment");
                                       } else {
-                                        // Merge new attachment into state + cache
                                         setAttachments((prev) => {
                                           const updated = [
                                             attachment,
                                             ...prev,
                                           ];
-                                            localStorage.setItem(
-                                              CACHE_ATTACH_KEY,
-                                              JSON.stringify(updated)
-                                            );
-                                            return updated;
-                                          });
+                                          localStorage.setItem(
+                                            CACHE_ATTACH_KEY,
+                                            JSON.stringify(updated)
+                                          );
+                                          return updated;
+                                        });
                                       }
 
                                       e.target.value = "";
@@ -1255,7 +1240,6 @@ function JobTracker({ user }) {
                                   />
                                 </div>
 
-                                {/* Attachments list - LINKS ONLY */}
                                 {jobAttachments.length > 0 && (
                                   <div className="mt-1 space-y-1">
                                     {jobAttachments.map((att) => (
@@ -1278,7 +1262,6 @@ function JobTracker({ user }) {
                                         <button
                                           className="text-[10px] text-rose-500 hover:underline"
                                           onClick={async () => {
-                                            // Delete from storage
                                             const { error: storageError } =
                                               await supabase.storage
                                                 .from("job-attachments")
@@ -1290,7 +1273,6 @@ function JobTracker({ user }) {
                                               return;
                                             }
 
-                                            // Delete DB record
                                             const { error: dbError } =
                                               await supabase
                                                 .from("job_attachments")
@@ -1305,7 +1287,6 @@ function JobTracker({ user }) {
                                               return;
                                             }
 
-                                            // Update local attachments state + cache
                                             setAttachments((prev) => {
                                               const updated = prev.filter(
                                                 (x) => x.id !== att.id
@@ -1346,7 +1327,7 @@ function JobTracker({ user }) {
                 </div>
               )}
 
-              {/* Mobile cards (always cards on small screens) */}
+              {/* Mobile cards */}
               <div className="md:hidden space-y-3">
                 {visibleJobs.map((job) =>
                   renderJobCard(
@@ -1356,7 +1337,7 @@ function JobTracker({ user }) {
                 )}
               </div>
 
-              {/* Pagination controls */}
+              {/* Pagination */}
               <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500">
                 <div className="flex items-center gap-3">
                   <span>
@@ -1427,7 +1408,7 @@ function JobTracker({ user }) {
   );
 }
 
-/* ---------- Root component: manage session ---------- */
+/* ---------- Root component ---------- */
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -1462,7 +1443,7 @@ export default function App() {
   }
 
   if (!session) {
-    return <AuthScreen onAuth={() => {}} />;
+    return <AuthScreen onAuth={() => { }} />;
   }
 
   return <JobTracker user={session.user} />;
