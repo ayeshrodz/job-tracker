@@ -1,7 +1,135 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
-function App() {
+/* ---------- Auth UI ---------- */
+
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState("sign_in"); // "sign_in" | "sign_up"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg("");
+    setLoading(true);
+
+    try {
+      if (mode === "sign_up") {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+        // After sign up, Supabase auto logs in (for email+password)
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+      }
+      onAuth(); // parent will re-fetch session
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.message || "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
+      <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+        <h1 className="text-xl font-semibold mb-1 text-slate-900">
+          Job Applications Tracker
+        </h1>
+        <p className="text-xs text-slate-500 mb-4">
+          Sign in to manage your job applications securely.
+        </p>
+
+        <div className="flex mb-4 text-xs font-medium border border-slate-200 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            className={
+              "flex-1 py-2 " +
+              (mode === "sign_in"
+                ? "bg-sky-600 text-white"
+                : "bg-white text-slate-700")
+            }
+            onClick={() => setMode("sign_in")}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            className={
+              "flex-1 py-2 " +
+              (mode === "sign_up"
+                ? "bg-sky-600 text-white"
+                : "bg-white text-slate-700")
+            }
+            onClick={() => setMode("sign_up")}
+          >
+            Sign up
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-700">
+              Email
+            </label>
+            <input
+              type="email"
+              required
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:border-sky-500"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+          </div>
+
+          {errorMsg && (
+            <p className="text-xs text-rose-600 mt-1">{errorMsg}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700 disabled:opacity-60"
+          >
+            {loading
+              ? "Please wait…"
+              : mode === "sign_in"
+              ? "Sign in"
+              : "Create account"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Job Tracker UI (same as before, but talking to Supabase) ---------- */
+
+function JobTracker({ user }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
@@ -16,7 +144,6 @@ function App() {
   });
   const [editingId, setEditingId] = useState(null);
 
-  // Load jobs from Supabase
   const fetchJobs = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -36,7 +163,20 @@ function App() {
     fetchJobs();
   }, []);
 
-  // Form change handler
+  const resetForm = () => {
+    setForm({
+      company: "",
+      position: "",
+      source_url: "",
+      date_found: "",
+      description: "",
+      applied: false,
+      applied_date: "",
+      status: "not_applied",
+    });
+    setEditingId(null);
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm((prev) => ({
@@ -45,7 +185,6 @@ function App() {
     }));
   };
 
-  // Create / update job
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -69,11 +208,13 @@ function App() {
       if (error) {
         console.error("Error updating job:", error);
       } else {
-        setEditingId(null);
         resetForm();
         fetchJobs();
       }
     } else {
+      // attach user_id so RLS passes
+      payload.user_id = user.id;
+
       const { error } = await supabase.from("jobs").insert(payload);
       if (error) {
         console.error("Error inserting job:", error);
@@ -82,19 +223,6 @@ function App() {
         fetchJobs();
       }
     }
-  };
-
-  const resetForm = () => {
-    setForm({
-      company: "",
-      position: "",
-      source_url: "",
-      date_found: "",
-      description: "",
-      applied: false,
-      applied_date: "",
-      status: "not_applied",
-    });
   };
 
   const handleEdit = (job) => {
@@ -142,16 +270,28 @@ function App() {
     <div className="min-h-screen bg-slate-100 text-slate-900">
       {/* Top bar */}
       <header className="border-b border-slate-200 bg-white">
-        <div className="max-w-5xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Job Applications Tracker
-          </h1>
-          <p className="text-sm text-slate-500">
-            Track roles you find and your application progress.
-          </p>
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Job Applications Tracker
+            </h1>
+            <p className="text-sm text-slate-500">
+              Signed in as <span className="font-medium">{user.email}</span>
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              window.location.reload();
+            }}
+            className="text-xs text-slate-500 hover:text-slate-800 underline"
+          >
+            Sign out
+          </button>
         </div>
       </header>
 
+      {/* The rest is exactly the styled UI we already had */}
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {/* Form card */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -167,10 +307,7 @@ function App() {
             {editingId && (
               <button
                 type="button"
-                onClick={() => {
-                  setEditingId(null);
-                  resetForm();
-                }}
+                onClick={resetForm}
                 className="text-xs text-slate-500 hover:text-slate-700 underline"
               >
                 Cancel editing
@@ -320,9 +457,7 @@ function App() {
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Jobs</h2>
-            <p className="text-xs text-slate-500">
-              Total: {jobs.length}
-            </p>
+            <p className="text-xs text-slate-500">Total: {jobs.length}</p>
           </div>
 
           {loading ? (
@@ -417,4 +552,43 @@ function App() {
   );
 }
 
-export default App;
+/* ---------- Root component: manage session ---------- */
+
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    const loadSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      setSession(session ?? null);
+      setChecking(false);
+    };
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">
+        Checking session…
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <AuthScreen onAuth={() => {}} />;
+  }
+
+  return <JobTracker user={session.user} />;
+}
