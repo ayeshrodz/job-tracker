@@ -182,8 +182,8 @@ function AuthScreen({ onAuth }) {
             {loading
               ? "Please wait…"
               : mode === "sign_in"
-              ? "Sign in"
-              : "Create account"}
+                ? "Sign in"
+                : "Create account"}
           </button>
         </form>
       </div>
@@ -242,7 +242,7 @@ function JobTracker({ user }) {
   const [appliedFilter, setAppliedFilter] = useState("all");
 
   // Sorting
-  const [sortKey, setSortKey] = useState("applied");
+  const [sortKey, setSortKey] = useState("date_found");
   const [sortDirection, setSortDirection] = useState("desc");
 
   // Pagination
@@ -1032,24 +1032,26 @@ function JobTracker({ user }) {
               </select>
 
               {/* Sort controls */}
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
-              >
-                <option value="date_found">Sort: Date</option>
-                <option value="company">Sort: Company</option>
-                <option value="position">Sort: Position</option>
-                <option value="applied">Sort: Applied</option>
-                <option value="status">Sort: Status</option>
-              </select>
+              <div className="md:inline-flex items-center gap-1 border-l border-slate-200 pl-2 ml-1">
+                <span className="text-[11px] text-slate-400 mr-1">Sort</span>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
-                }
-                className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm hover:bg-slate-50"
+                {/* Sort controls (helpful on mobile) */}
+                <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500
+    focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+                >
+                  <option value="date_found">Date</option>
+                  <option value="company">Company</option>
+                  <option value="position">Position</option>
+                  <option value="applied">Applied</option>
+                  <option value="status">Status</option>
+                </select>
+              </div>
+              <button type="button" onClick={() =>
+                setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+              }
+                className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm
+  hover:bg-slate-50"
                 title="Toggle sort direction"
               >
                 {sortDirection === "asc" ? "↑" : "↓"}
@@ -1464,7 +1466,7 @@ export default function App() {
   }
 
   if (!session) {
-    return <AuthScreen onAuth={() => {}} />;
+    return <AuthScreen onAuth={() => { }} />;
   }
 
   return <JobTracker user={session.user} />;
