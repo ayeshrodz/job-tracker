@@ -11,9 +11,9 @@ async function uploadJobAttachment(file, jobId, userId) {
   const cleanName = file.name.replace(/\s+/g, "_");
   const path = `${userId}/${jobId}/${Date.now()}-${cleanName}`;
 
-  // Upload to Supabase Storage
+  // Upload to Supabase Storage (this uploads the file)
   const { data, error } = await supabase.storage
-    .from("job-attachments")   // 👈 make sure this matches your bucket name
+    .from("job-attachments") // 👈 make sure bucket name matches
     .upload(path, file);
 
   if (error) {
@@ -21,23 +21,26 @@ async function uploadJobAttachment(file, jobId, userId) {
     return { error };
   }
 
-  // Save metadata row in job_attachments table
-  const { error: insertError } = await supabase.from("job_attachments").insert({
-    job_id: jobId,
-    user_id: userId,
-    file_path: data.path,
-    file_name: file.name,
-    file_type: file.type || null,
-  });
+  // Save metadata row in job_attachments table and return the created row
+  const { data: attachmentRow, error: insertError } = await supabase
+    .from("job_attachments")
+    .insert({
+      job_id: jobId,
+      user_id: userId,
+      file_path: data.path,
+      file_name: file.name,
+      file_type: file.type || null,
+    })
+    .select("*")
+    .single();
 
   if (insertError) {
     console.error("DB insert error (job_attachments):", insertError);
     return { error: insertError };
   }
 
-  return { path: data.path };
+  return { path: data.path, attachment: attachmentRow };
 }
-
 
 /* ---------- Auth UI ---------- */
 
@@ -60,7 +63,6 @@ function AuthScreen({ onAuth }) {
           password,
         });
         if (error) throw error;
-        // After sign up, Supabase auto logs in (for email+password)
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -68,7 +70,7 @@ function AuthScreen({ onAuth }) {
         });
         if (error) throw error;
       }
-      onAuth(); // parent will re-fetch session
+      onAuth();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || "Authentication failed");
@@ -165,9 +167,15 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-/* ---------- Job Tracker UI (with attachments) ---------- */
+/* ---------- Job Tracker UI (with caching + lightweight attachments) ---------- */
 
 function JobTracker({ user }) {
+  // Cache config
+  const CACHE_JOBS_KEY = "jobsCache";
+  const CACHE_ATTACH_KEY = "attachmentsCache";
+  const CACHE_LAST_FETCH_KEY = "jobsAndAttachmentsLastFetch";
+  const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
   const getToday = () => {
     const now = new Date();
     const formatter = new Intl.DateTimeFormat("en-NZ", {
@@ -186,8 +194,9 @@ function JobTracker({ user }) {
   };
 
   const [jobs, setJobs] = useState([]);
-  const [attachments, setAttachments] = useState([]); // all attachments for this user
+  const [attachments, setAttachments] = useState([]); // all attachment metadata
   const [loading, setLoading] = useState(true);
+
   const [form, setForm] = useState({
     company: "",
     position: "",
@@ -210,7 +219,10 @@ function JobTracker({ user }) {
     if (error) {
       console.error("Error fetching jobs:", error);
     } else {
-      setJobs(data || []);
+      const list = data || [];
+      setJobs(list);
+      localStorage.setItem(CACHE_JOBS_KEY, JSON.stringify(list));
+      localStorage.setItem(CACHE_LAST_FETCH_KEY, String(Date.now()));
     }
     setLoading(false);
   };
@@ -224,13 +236,55 @@ function JobTracker({ user }) {
     if (error) {
       console.error("Error fetching attachments:", error);
     } else {
-      setAttachments(data || []);
+      const list = data || [];
+      setAttachments(list);
+      localStorage.setItem(CACHE_ATTACH_KEY, JSON.stringify(list));
+      localStorage.setItem(CACHE_LAST_FETCH_KEY, String(Date.now()));
     }
   };
 
   useEffect(() => {
-    fetchJobs();
-    fetchAttachments();
+    // 1) Load cached data first for instant UI
+    const cachedJobs = localStorage.getItem(CACHE_JOBS_KEY);
+    const cachedAttachments = localStorage.getItem(CACHE_ATTACH_KEY);
+
+    if (cachedJobs) {
+      try {
+        setJobs(JSON.parse(cachedJobs));
+      } catch (e) {
+        console.error("Error parsing cached jobs:", e);
+      }
+    }
+
+    if (cachedAttachments) {
+      try {
+        setAttachments(JSON.parse(cachedAttachments));
+      } catch (e) {
+        console.error("Error parsing cached attachments:", e);
+      }
+    }
+
+    // 2) Decide whether to re-fetch from Supabase based on TTL
+    const lastFetch = Number(localStorage.getItem(CACHE_LAST_FETCH_KEY) || 0);
+    const age = Date.now() - lastFetch;
+
+    if (!cachedJobs && !cachedAttachments) {
+      // No cache at all → initial fetch
+      (async () => {
+        await fetchJobs();
+        await fetchAttachments();
+      })();
+    } else if (age > CACHE_TTL_MS) {
+      // Cache is stale → revalidate in background (UI still shows cached data)
+      (async () => {
+        await fetchJobs();
+        await fetchAttachments();
+      })();
+      setLoading(false);
+    } else {
+      // Cache is fresh enough → no Supabase calls
+      setLoading(false);
+    }
   }, []);
 
   const resetForm = () => {
@@ -251,7 +305,6 @@ function JobTracker({ user }) {
     const { name, value, type, checked } = e.target;
 
     setForm((prev) => {
-      // Special logic for the "applied" checkbox
       if (name === "applied") {
         const applied = checked;
         return {
@@ -293,10 +346,9 @@ function JobTracker({ user }) {
         console.error("Error updating job:", error);
       } else {
         resetForm();
-        fetchJobs();
+        await fetchJobs(); // also refresh cache
       }
     } else {
-      // attach user_id so RLS passes
       payload.user_id = user.id;
 
       const { error } = await supabase.from("jobs").insert(payload);
@@ -304,7 +356,7 @@ function JobTracker({ user }) {
         console.error("Error inserting job:", error);
       } else {
         resetForm();
-        fetchJobs();
+        await fetchJobs(); // refresh jobs + cache
       }
     }
   };
@@ -330,9 +382,17 @@ function JobTracker({ user }) {
     if (error) {
       console.error("Error deleting job:", error);
     } else {
-      setJobs((prev) => prev.filter((j) => j.id !== id));
-      // attachments are on delete cascade in DB, but we could also refresh:
-      await fetchAttachments();
+      setJobs((prev) => {
+        const updated = prev.filter((j) => j.id !== id);
+        localStorage.setItem(CACHE_JOBS_KEY, JSON.stringify(updated));
+        return updated;
+      });
+      // Remove any attachments for that job from local cache as well
+      setAttachments((prev) => {
+        const updated = prev.filter((att) => att.job_id !== id);
+        localStorage.setItem(CACHE_ATTACH_KEY, JSON.stringify(updated));
+        return updated;
+      });
     }
   };
 
@@ -353,6 +413,7 @@ function JobTracker({ user }) {
   };
 
   const getPublicUrl = (filePath) => {
+    // This does NOT download the file; it just returns a URL string
     const { data } = supabase.storage
       .from("job-attachments")
       .getPublicUrl(filePath);
@@ -653,17 +714,29 @@ function JobTracker({ user }) {
                                   const file = e.target.files?.[0];
                                   if (!file) return;
 
-                                  const { error } = await uploadJobAttachment(
-                                    file,
-                                    job.id,
-                                    user.id
-                                  );
+                                  const { error, attachment } =
+                                    await uploadJobAttachment(
+                                      file,
+                                      job.id,
+                                      user.id
+                                    );
 
                                   if (error) {
                                     console.error(error);
                                     alert("Failed to upload attachment");
                                   } else {
-                                    await fetchAttachments();
+                                    // Merge new attachment into state + cache
+                                    setAttachments((prev) => {
+                                      const updated = [
+                                        attachment,
+                                        ...prev,
+                                      ];
+                                      localStorage.setItem(
+                                        CACHE_ATTACH_KEY,
+                                        JSON.stringify(updated)
+                                      );
+                                      return updated;
+                                    });
                                   }
 
                                   e.target.value = "";
@@ -671,7 +744,7 @@ function JobTracker({ user }) {
                               />
                             </div>
 
-                            {/* Attachments list */}
+                            {/* Attachments list - LINKS ONLY */}
                             {jobAttachments.length > 0 && (
                               <div className="mt-1 space-y-1">
                                 {jobAttachments.map((att) => (
@@ -718,7 +791,17 @@ function JobTracker({ user }) {
                                           return;
                                         }
 
-                                        await fetchAttachments();
+                                        // Update local attachments state + cache
+                                        setAttachments((prev) => {
+                                          const updated = prev.filter(
+                                            (x) => x.id !== att.id
+                                          );
+                                          localStorage.setItem(
+                                            CACHE_ATTACH_KEY,
+                                            JSON.stringify(updated)
+                                          );
+                                          return updated;
+                                        });
                                       }}
                                     >
                                       Delete
