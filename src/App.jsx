@@ -220,7 +220,7 @@ function JobTracker({ user }) {
   });
   const [editingId, setEditingId] = useState(null);
 
-  // modal open/close
+  // Modal open/close
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   // Filters + search
@@ -575,9 +575,22 @@ function JobTracker({ user }) {
               {(job.company || "?").charAt(0).toUpperCase()}
             </div>
             <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-slate-900">
-                {job.position}
-              </h3>
+              <div className="flex items-start gap-2">
+                <h3 className="flex-1 text-sm font-semibold text-slate-900">
+                  {job.position}
+                </h3>
+                {job.source_url && (
+                  <a
+                    href={job.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                    title="Open job ad"
+                  >
+                    <Link2 className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
               <p className="text-xs text-slate-500">{job.company}</p>
               <div className="flex flex-wrap gap-1 mt-1">
                 <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
@@ -600,27 +613,13 @@ function JobTracker({ user }) {
           </span>
         </div>
 
-        {job.source_url && (
-          <div className="mt-2">
-            <a
-              href={job.source_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] text-sky-600 hover:underline"
-            >
-              <Link2 className="w-3 h-3" />
-              <span>View ad</span>
-            </a>
-          </div>
-        )}
-
         <div className="mt-2 flex items-center justify-between">
           <button
             type="button"
             onClick={() =>
               setExpandedJobId((prev) => (prev === job.id ? null : job.id))
             }
-            className="inline-flex items-center gap-1 text-[11px] text-sky-700 hover:underline"
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors"
           >
             {isExpanded ? (
               <>
@@ -634,16 +633,18 @@ function JobTracker({ user }) {
               </>
             )}
           </button>
-          <div className="space-x-2">
+          <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => handleEdit(job)}
-              className="text-[11px] text-sky-700 hover:underline"
+              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
             >
               Edit
             </button>
             <button
+              type="button"
               onClick={() => handleDelete(job.id)}
-              className="text-[11px] text-rose-600 hover:underline"
+              className="inline-flex items-center rounded-full border border-rose-100 bg-white px-3 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-colors"
             >
               Delete
             </button>
@@ -1084,7 +1085,7 @@ function JobTracker({ user }) {
             <p className="text-sm text-slate-500">Loading…</p>
           ) : jobs.length === 0 ? (
             <p className="text-sm text-slate-500">
-              No jobs yet. Use &ldquo;Add job&rdquo; to create your first one.
+              No jobs yet. Use “Add job” to create your first one.
             </p>
           ) : filteredJobs.length === 0 ? (
             <p className="text-sm text-slate-500">
@@ -1195,16 +1196,18 @@ function JobTracker({ user }) {
                             </td>
                             <td className="px-3 py-2 align-top">
                               <div className="space-y-2">
-                                <div className="space-x-2">
+                                <div className="flex items-center gap-2">
                                   <button
+                                    type="button"
                                     onClick={() => handleEdit(job)}
-                                    className="text-xs text-sky-700 hover:underline"
+                                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
                                   >
                                     Edit
                                   </button>
                                   <button
+                                    type="button"
                                     onClick={() => handleDelete(job.id)}
-                                    className="text-xs text-rose-600 hover:underline"
+                                    className="inline-flex items-center rounded-full border border-rose-100 bg-white px-3 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-colors"
                                   >
                                     Delete
                                   </button>
@@ -1239,12 +1242,12 @@ function JobTracker({ user }) {
                                             attachment,
                                             ...prev,
                                           ];
-                                          localStorage.setItem(
-                                            CACHE_ATTACH_KEY,
-                                            JSON.stringify(updated)
-                                          );
-                                          return updated;
-                                        });
+                                            localStorage.setItem(
+                                              CACHE_ATTACH_KEY,
+                                              JSON.stringify(updated)
+                                            );
+                                            return updated;
+                                          });
                                       }
 
                                       e.target.value = "";
