@@ -24,7 +24,7 @@ async function uploadJobAttachment(file, jobId, userId) {
 
   // Upload to Supabase Storage (this uploads the file)
   const { data, error } = await supabase.storage
-    .from("job-attachments") // 👈 make sure bucket name matches
+    .from("job-attachments")
     .upload(path, file);
 
   if (error) {
@@ -56,11 +56,12 @@ async function uploadJobAttachment(file, jobId, userId) {
 /* ---------- Auth UI ---------- */
 
 function AuthScreen({ onAuth }) {
-  const [mode, setMode] = useState("sign_in"); // "sign_in" | "sign_up"
+  const [mode, setMode] = useState("sign_in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -69,19 +70,32 @@ function AuthScreen({ onAuth }) {
 
     try {
       if (mode === "sign_up") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
         });
         if (error) throw error;
+
+        // If email confirmation is disabled and a session is returned,
+        // the auth state listener will pick it up and show the app.
+        if (data?.session) {
+          onAuth();
+        } else {
+          // Most setups require email confirmation before sign-in.
+          setErrorMsg(
+            "Account created. Please check your email to confirm your address, then sign in."
+          );
+          setMode("sign_in");
+          setPassword("");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
+        onAuth();
       }
-      onAuth();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || "Authentication failed");
@@ -89,7 +103,6 @@ function AuthScreen({ onAuth }) {
       setLoading(false);
     }
   };
-
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
@@ -169,8 +182,8 @@ function AuthScreen({ onAuth }) {
             {loading
               ? "Please wait…"
               : mode === "sign_in"
-              ? "Sign in"
-              : "Create account"}
+                ? "Sign in"
+                : "Create account"}
           </button>
         </form>
       </div>
@@ -178,13 +191,13 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-/* ---------- Job Tracker UI (with caching, search, filter, sort, pagination, responsive list) ---------- */
+/* ---------- Job Tracker UI ---------- */
 
 function JobTracker({ user }) {
-  // Cache config
-  const CACHE_JOBS_KEY = "jobsCache";
-  const CACHE_ATTACH_KEY = "attachmentsCache";
-  const CACHE_LAST_FETCH_KEY = "jobsAndAttachmentsLastFetch";
+  // Cache config – per-user keys
+  const CACHE_JOBS_KEY = `jobsCache_${user.id}`;
+  const CACHE_ATTACH_KEY = `attachmentsCache_${user.id}`;
+  const CACHE_LAST_FETCH_KEY = `jobsAndAttachmentsLastFetch_${user.id}`;
   const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   const getToday = () => {
@@ -205,7 +218,7 @@ function JobTracker({ user }) {
   };
 
   const [jobs, setJobs] = useState([]);
-  const [attachments, setAttachments] = useState([]); // all attachment metadata
+  const [attachments, setAttachments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [form, setForm] = useState({
@@ -220,7 +233,7 @@ function JobTracker({ user }) {
   });
   const [editingId, setEditingId] = useState(null);
 
-  // modal open/close
+  // Modal open/close
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   // Filters + search
@@ -229,12 +242,12 @@ function JobTracker({ user }) {
   const [appliedFilter, setAppliedFilter] = useState("all");
 
   // Sorting
-  const [sortKey, setSortKey] = useState("applied"); // company, position, date_found, applied, status
-  const [sortDirection, setSortDirection] = useState("desc"); // asc | desc
+  const [sortKey, setSortKey] = useState("date_found");
+  const [sortDirection, setSortDirection] = useState("desc");
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10); // 10, 20, 50
+  const [pageSize, setPageSize] = useState(10);
 
   // Mobile card expansion
   const [expandedJobId, setExpandedJobId] = useState(null);
@@ -247,6 +260,7 @@ function JobTracker({ user }) {
     const { data, error } = await supabase
       .from("jobs")
       .select("*")
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -264,6 +278,7 @@ function JobTracker({ user }) {
     const { data, error } = await supabase
       .from("job_attachments")
       .select("*")
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -302,25 +317,21 @@ function JobTracker({ user }) {
     const age = Date.now() - lastFetch;
 
     if (!cachedJobs && !cachedAttachments) {
-      // No cache at all → initial fetch
       (async () => {
         await fetchJobs();
         await fetchAttachments();
       })();
     } else if (age > CACHE_TTL_MS) {
-      // Cache is stale → revalidate in background (UI still shows cached data)
       (async () => {
         await fetchJobs();
         await fetchAttachments();
       })();
       setLoading(false);
     } else {
-      // Cache is fresh enough → no Supabase calls
       setLoading(false);
     }
-  }, []);
+  }, [user.id]);
 
-  // Reset page when filters/search or page size change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, appliedFilter, pageSize]);
@@ -378,13 +389,14 @@ function JobTracker({ user }) {
       const { error } = await supabase
         .from("jobs")
         .update(payload)
-        .eq("id", editingId);
+        .eq("id", editingId)
+        .eq("user_id", user.id);
 
       if (error) {
         console.error("Error updating job:", error);
       } else {
         resetForm();
-        await fetchJobs(); // also refresh cache
+        await fetchJobs();
         setIsFormOpen(false);
       }
     } else {
@@ -395,7 +407,7 @@ function JobTracker({ user }) {
         console.error("Error inserting job:", error);
       } else {
         resetForm();
-        await fetchJobs(); // refresh jobs + cache
+        await fetchJobs();
         setIsFormOpen(false);
       }
     }
@@ -423,7 +435,12 @@ function JobTracker({ user }) {
 
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this job?")) return;
-    const { error } = await supabase.from("jobs").delete().eq("id", id);
+    const { error } = await supabase
+      .from("jobs")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
+
     if (error) {
       console.error("Error deleting job:", error);
     } else {
@@ -432,7 +449,6 @@ function JobTracker({ user }) {
         localStorage.setItem(CACHE_JOBS_KEY, JSON.stringify(updated));
         return updated;
       });
-      // Remove any attachments for that job from local cache as well
       setAttachments((prev) => {
         const updated = prev.filter((att) => att.job_id !== id);
         localStorage.setItem(CACHE_ATTACH_KEY, JSON.stringify(updated));
@@ -458,7 +474,6 @@ function JobTracker({ user }) {
   };
 
   const getPublicUrl = (filePath) => {
-    // This does NOT download the file; it just returns a URL string
     const { data } = supabase.storage
       .from("job-attachments")
       .getPublicUrl(filePath);
@@ -470,7 +485,6 @@ function JobTracker({ user }) {
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
   const filteredJobs = jobs.filter((job) => {
-    // text search across a few fields
     const matchesSearch =
       !normalizedSearch ||
       (job.company ?? "").toLowerCase().includes(normalizedSearch) ||
@@ -478,12 +492,10 @@ function JobTracker({ user }) {
       (job.description ?? "").toLowerCase().includes(normalizedSearch) ||
       (job.source_url ?? "").toLowerCase().includes(normalizedSearch);
 
-    // status filter
     const jobStatus = job.status ?? "not_applied";
     const matchesStatus =
       statusFilter === "all" || jobStatus === statusFilter;
 
-    // applied filter
     let matchesApplied = true;
     if (appliedFilter === "applied") {
       matchesApplied = !!job.applied;
@@ -506,7 +518,6 @@ function JobTracker({ user }) {
         return job.applied ? 1 : 0;
       case "date_found":
       default:
-        // ISO date string – safe to compare as string
         return job.date_found ?? "";
     }
   };
@@ -538,14 +549,11 @@ function JobTracker({ user }) {
   const endDisplay = startIndex + visibleJobs.length;
 
   const handleSort = (key) => {
-    // Go back to first page when sort changes
     setCurrentPage(1);
 
     if (sortKey === key) {
-      // Same column – toggle direction
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
-      // New column – start with ascending
       setSortKey(key);
       setSortDirection("asc");
     }
@@ -560,7 +568,7 @@ function JobTracker({ user }) {
     );
   };
 
-  // Reusable card renderer (used on mobile and desktop “cards” mode)
+  // Card renderer (mobile + desktop cards)
   const renderJobCard = (job, jobAttachments) => {
     const isExpanded = expandedJobId === job.id;
 
@@ -575,9 +583,22 @@ function JobTracker({ user }) {
               {(job.company || "?").charAt(0).toUpperCase()}
             </div>
             <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-slate-900">
-                {job.position}
-              </h3>
+              <div className="flex items-start gap-2">
+                <h3 className="flex-1 text-sm font-semibold text-slate-900">
+                  {job.position}
+                </h3>
+                {job.source_url && (
+                  <a
+                    href={job.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                    title="Open job ad"
+                  >
+                    <Link2 className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
               <p className="text-xs text-slate-500">{job.company}</p>
               <div className="flex flex-wrap gap-1 mt-1">
                 <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
@@ -600,27 +621,13 @@ function JobTracker({ user }) {
           </span>
         </div>
 
-        {job.source_url && (
-          <div className="mt-2">
-            <a
-              href={job.source_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] text-sky-600 hover:underline"
-            >
-              <Link2 className="w-3 h-3" />
-              <span>View ad</span>
-            </a>
-          </div>
-        )}
-
         <div className="mt-2 flex items-center justify-between">
           <button
             type="button"
             onClick={() =>
               setExpandedJobId((prev) => (prev === job.id ? null : job.id))
             }
-            className="inline-flex items-center gap-1 text-[11px] text-sky-700 hover:underline"
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors"
           >
             {isExpanded ? (
               <>
@@ -634,16 +641,18 @@ function JobTracker({ user }) {
               </>
             )}
           </button>
-          <div className="space-x-2">
+          <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => handleEdit(job)}
-              className="text-[11px] text-sky-700 hover:underline"
+              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
             >
               Edit
             </button>
             <button
+              type="button"
               onClick={() => handleDelete(job.id)}
-              className="text-[11px] text-rose-600 hover:underline"
+              className="inline-flex items-center rounded-full border border-rose-100 bg-white px-3 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-colors"
             >
               Delete
             </button>
@@ -658,7 +667,6 @@ function JobTracker({ user }) {
               </p>
             )}
 
-            {/* File upload */}
             <div>
               <label className="block text-[11px] text-slate-500 mb-1">
                 Attach file (PDF, DOCX, etc.)
@@ -695,7 +703,6 @@ function JobTracker({ user }) {
               />
             </div>
 
-            {/* Attachments list */}
             {jobAttachments.length > 0 && (
               <div className="space-y-1">
                 {jobAttachments.map((att) => (
@@ -729,7 +736,8 @@ function JobTracker({ user }) {
                         const { error: dbError } = await supabase
                           .from("job_attachments")
                           .delete()
-                          .eq("id", att.id);
+                          .eq("id", att.id)
+                          .eq("user_id", user.id);
 
                         if (dbError) {
                           console.error(dbError);
@@ -762,7 +770,7 @@ function JobTracker({ user }) {
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
       {/* Top bar */}
-      <header className="border-b border-slate-200 bg-white">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="w-full px-6 lg:px-10 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
@@ -787,7 +795,7 @@ function JobTracker({ user }) {
       {/* Add / Edit Job Modal */}
       {isFormOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4">
-          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-slate-200 p-6 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl border border-slate-200 p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold">
@@ -1023,25 +1031,27 @@ function JobTracker({ user }) {
                 <option value="not_applied_only">Not applied only</option>
               </select>
 
-              {/* Sort controls (helpful on mobile) */}
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
-              >
-                <option value="date_found">Sort: Date</option>
-                <option value="company">Sort: Company</option>
-                <option value="position">Sort: Position</option>
-                <option value="applied">Sort: Applied</option>
-                <option value="status">Sort: Status</option>
-              </select>
+              {/* Sort controls */}
+              <div className="md:inline-flex items-center gap-1 border-l border-slate-200 pl-2 ml-1">
+                <span className="text-[11px] text-slate-400 mr-1">Sort</span>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
-                }
-                className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm hover:bg-slate-50"
+                {/* Sort controls (helpful on mobile) */}
+                <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500
+    focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+                >
+                  <option value="date_found">Date</option>
+                  <option value="company">Company</option>
+                  <option value="position">Position</option>
+                  <option value="applied">Applied</option>
+                  <option value="status">Status</option>
+                </select>
+              </div>
+              <button type="button" onClick={() =>
+                setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+              }
+                className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm
+  hover:bg-slate-50"
                 title="Toggle sort direction"
               >
                 {sortDirection === "asc" ? "↑" : "↓"}
@@ -1084,7 +1094,7 @@ function JobTracker({ user }) {
             <p className="text-sm text-slate-500">Loading…</p>
           ) : jobs.length === 0 ? (
             <p className="text-sm text-slate-500">
-              No jobs yet. Use &ldquo;Add job&rdquo; to create your first one.
+              No jobs yet. Use “Add job” to create your first one.
             </p>
           ) : filteredJobs.length === 0 ? (
             <p className="text-sm text-slate-500">
@@ -1195,22 +1205,23 @@ function JobTracker({ user }) {
                             </td>
                             <td className="px-3 py-2 align-top">
                               <div className="space-y-2">
-                                <div className="space-x-2">
+                                <div className="flex items-center gap-2">
                                   <button
+                                    type="button"
                                     onClick={() => handleEdit(job)}
-                                    className="text-xs text-sky-700 hover:underline"
+                                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
                                   >
                                     Edit
                                   </button>
                                   <button
+                                    type="button"
                                     onClick={() => handleDelete(job.id)}
-                                    className="text-xs text-rose-600 hover:underline"
+                                    className="inline-flex items-center rounded-full border border-rose-100 bg-white px-3 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-colors"
                                   >
                                     Delete
                                   </button>
                                 </div>
 
-                                {/* File upload */}
                                 <div className="mt-1">
                                   <label className="block text-[11px] text-slate-500 mb-1">
                                     Attach file (PDF, DOCX, etc.)
@@ -1233,7 +1244,6 @@ function JobTracker({ user }) {
                                         console.error(error);
                                         alert("Failed to upload attachment");
                                       } else {
-                                        // Merge new attachment into state + cache
                                         setAttachments((prev) => {
                                           const updated = [
                                             attachment,
@@ -1252,7 +1262,6 @@ function JobTracker({ user }) {
                                   />
                                 </div>
 
-                                {/* Attachments list - LINKS ONLY */}
                                 {jobAttachments.length > 0 && (
                                   <div className="mt-1 space-y-1">
                                     {jobAttachments.map((att) => (
@@ -1275,7 +1284,6 @@ function JobTracker({ user }) {
                                         <button
                                           className="text-[10px] text-rose-500 hover:underline"
                                           onClick={async () => {
-                                            // Delete from storage
                                             const { error: storageError } =
                                               await supabase.storage
                                                 .from("job-attachments")
@@ -1287,12 +1295,12 @@ function JobTracker({ user }) {
                                               return;
                                             }
 
-                                            // Delete DB record
                                             const { error: dbError } =
                                               await supabase
                                                 .from("job_attachments")
                                                 .delete()
-                                                .eq("id", att.id);
+                                                .eq("id", att.id)
+                                                .eq("user_id", user.id);
 
                                             if (dbError) {
                                               console.error(dbError);
@@ -1302,7 +1310,6 @@ function JobTracker({ user }) {
                                               return;
                                             }
 
-                                            // Update local attachments state + cache
                                             setAttachments((prev) => {
                                               const updated = prev.filter(
                                                 (x) => x.id !== att.id
@@ -1343,7 +1350,7 @@ function JobTracker({ user }) {
                 </div>
               )}
 
-              {/* Mobile cards (always cards on small screens) */}
+              {/* Mobile cards */}
               <div className="md:hidden space-y-3">
                 {visibleJobs.map((job) =>
                   renderJobCard(
@@ -1353,7 +1360,7 @@ function JobTracker({ user }) {
                 )}
               </div>
 
-              {/* Pagination controls */}
+              {/* Pagination */}
               <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500">
                 <div className="flex items-center gap-3">
                   <span>
@@ -1424,7 +1431,7 @@ function JobTracker({ user }) {
   );
 }
 
-/* ---------- Root component: manage session ---------- */
+/* ---------- Root component ---------- */
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -1459,7 +1466,7 @@ export default function App() {
   }
 
   if (!session) {
-    return <AuthScreen onAuth={() => {}} />;
+    return <AuthScreen onAuth={() => { }} />;
   }
 
   return <JobTracker user={session.user} />;
