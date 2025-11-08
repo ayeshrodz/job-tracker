@@ -1,16 +1,31 @@
-# React + Vite
+# Job Applications Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A simple full-stack web app built with **React (Vite)** and **Supabase** to help you track job vacancies you come across and manage your application progress.
 
-Currently, two official plugins are available:
+## 📝 Description
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+This personal tool lets you record job advertisements, company details, and positions you’re interested in, along with application status updates.  
+Each record includes information such as the job ad, company name, position, date found, and whether you’ve applied, plus the application date and status (pending, interview, offer, rejected, etc.).
 
-## React Compiler
+With Supabase providing authentication and database management, each user securely manages their own job listings under protected Row Level Security (RLS) policies.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## ⚙️ Tech Stack
 
-## Expanding the ESLint configuration
+- **Frontend:** React (Vite)
+- **Styling:** Tailwind CSS
+- **Backend / Database:** Supabase (PostgreSQL)
+- **Auth:** Supabase Auth (Email & Password)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🚀 Features
+
+- User authentication (sign up / sign in via Supabase)
+- Create, read, update, and delete (CRUD) job entries
+- Per-user job data isolation via RLS
+- Responsive, minimal UI with Tailwind CSS
+
+## 🧭 Project Setup
+
+1. Clone the repository  
+   ```bash
+   git clone https://github.com/yourusername/job-tracker.git
+   cd job-tracker
