@@ -11,6 +11,8 @@ import {
   Plus,
   X,
 } from "lucide-react";
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import JobDetails from "./JobDetails";
 
 /* ---------- Helper for uploading attachments ---------- */
 
@@ -585,7 +587,9 @@ function JobTracker({ user }) {
             <div className="space-y-1">
               <div className="flex items-start gap-2">
                 <h3 className="flex-1 text-sm font-semibold text-slate-900">
-                  {job.position}
+                  <Link to={`/jobs/${job.id}`} className="hover:underline">
+                    {job.position}
+                  </Link>
                 </h3>
                 {job.source_url && (
                   <a
@@ -1185,7 +1189,11 @@ function JobTracker({ user }) {
                               )}
                             </td>
                             <td className="px-3 py-2 align-top">
-                              <div>{job.position}</div>
+                              <div>
+                                <Link to={`/jobs/${job.id}`} className="text-slate-900 hover:underline">
+                                  {job.position}
+                                </Link>
+                              </div>
                             </td>
                             <td className="px-3 py-2 align-top whitespace-nowrap">
                               {job.date_found}
@@ -1466,8 +1474,16 @@ export default function App() {
   }
 
   if (!session) {
-    return <AuthScreen onAuth={() => { }} />;
+    return <AuthScreen onAuth={() => {}} />;
   }
 
-  return <JobTracker user={session.user} />;
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<JobTracker user={session.user} />} />
+        <Route path="/jobs/:jobId" element={<JobDetails user={session.user} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
