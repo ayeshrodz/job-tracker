@@ -626,30 +626,12 @@ function JobTracker({ user }) {
         </div>
 
         <div className="mt-2 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() =>
-              setExpandedJobId((prev) => (prev === job.id ? null : job.id))
-            }
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors"
-          >
-            {isExpanded ? (
-              <>
-                Hide details
-                <ChevronUp className="w-3 h-3" />
-              </>
-            ) : (
-              <>
-                View details
-                <ChevronDown className="w-3 h-3" />
-              </>
-            )}
-          </button>
+          
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => handleEdit(job)}
-              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-colors"
             >
               Edit
             </button>
@@ -672,9 +654,7 @@ function JobTracker({ user }) {
             )}
 
             <div>
-              <label className="block text-[11px] text-slate-500 mb-1">
-                Attach file (PDF, DOCX, etc.)
-              </label>
+              
               <input
                 type="file"
                 className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
@@ -1163,9 +1143,17 @@ function JobTracker({ user }) {
                           </button>
                         </th>
                         <th className="px-3 py-2 font-semibold text-slate-700">
-                          Actions / Attachments
+                          <div className="flex flex-col">
+                            <span>Attachments</span>
+                            <span className="text-[10px] text-slate-500">
+                Attach file (PDF, DOCX, etc.)
+                            </span>
+                          </div>
                         </th>
-                      </tr>
+<th className="px-3 py-2 font-semibold text-slate-700 whitespace-nowrap">
+                          Actions
+                        </th>
+                                              </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                       {visibleJobs.map((job) => {
@@ -1213,27 +1201,7 @@ function JobTracker({ user }) {
                             </td>
                             <td className="px-3 py-2 align-top">
                               <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleEdit(job)}
-                                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(job.id)}
-                                    className="inline-flex items-center rounded-full border border-rose-100 bg-white px-3 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-colors"
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-
-                                <div className="mt-1">
-                                  <label className="block text-[11px] text-slate-500 mb-1">
-                                    Attach file (PDF, DOCX, etc.)
-                                  </label>
+                                <div>
                                   <input
                                     type="file"
                                     className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
@@ -1275,23 +1243,18 @@ function JobTracker({ user }) {
                                     {jobAttachments.map((att) => (
                                       <div
                                         key={att.id}
-                                        className="flex items-center justify-between gap-2"
+                                        className="flex items-center gap-2"
                                       >
-                                        <a
-                                          href={getPublicUrl(att.file_path)}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="inline-flex items-center gap-1 text-[11px] text-sky-700 hover:underline truncate max-w-[150px]"
-                                          title={att.file_name}
-                                        >
-                                          <FileText className="w-3 h-3" />
-                                          <span className="truncate">
-                                            {att.file_name}
-                                          </span>
-                                        </a>
                                         <button
-                                          className="text-[10px] text-rose-500 hover:underline"
+                                          type="button"
+                                          className="inline-flex items-center justify-center rounded-full border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-500 hover:bg-rose-100 hover:border-rose-200 transition-colors"
+                                          aria-label="Delete attachment"
                                           onClick={async () => {
+                                            const confirmDelete = window.confirm(
+                                              "Delete this attachment?"
+                                            );
+                                            if (!confirmDelete) return;
+
                                             const { error: storageError } =
                                               await supabase.storage
                                                 .from("job-attachments")
@@ -1330,13 +1293,43 @@ function JobTracker({ user }) {
                                             });
                                           }}
                                         >
-                                          Delete
+                                          ×
                                         </button>
+                                        <a
+                                          href={getPublicUrl(att.file_path)}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1 text-[11px] text-sky-700 hover:underline truncate max-w-[150px]"
+                                          title={att.file_name}
+                                        >
+                                          <FileText className="w-3 h-3" />
+                                          <span className="truncate">
+                                            {att.file_name}
+                                          </span>
+                                        </a>
                                       </div>
                                     ))}
                                   </div>
                                 )}
                               </div>
+                            </td>
+                            <td className="px-3 py-2 align-top whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEdit(job)}
+                                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700 transition-colors"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(job.id)}
+                                    className="inline-flex items-center rounded-full border border-rose-100 bg-white px-3 py-1 text-[11px] font-medium text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-colors"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
                             </td>
                           </tr>
                         );
