@@ -62,6 +62,7 @@ function AuthScreen({ onAuth }) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg("");
@@ -69,19 +70,32 @@ function AuthScreen({ onAuth }) {
 
     try {
       if (mode === "sign_up") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
         });
         if (error) throw error;
+
+        // If email confirmation is disabled and a session is returned,
+        // the auth state listener will pick it up and show the app.
+        if (data?.session) {
+          onAuth();
+        } else {
+          // Most setups require email confirmation before sign-in.
+          setErrorMsg(
+            "Account created. Please check your email to confirm your address, then sign in."
+          );
+          setMode("sign_in");
+          setPassword("");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
+        onAuth();
       }
-      onAuth();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || "Authentication failed");
@@ -89,7 +103,6 @@ function AuthScreen({ onAuth }) {
       setLoading(false);
     }
   };
-
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
