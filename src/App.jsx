@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 import {
@@ -9,6 +8,8 @@ import {
   ChevronUp,
   LayoutList,
   LayoutGrid,
+  Plus,
+  X,
 } from "lucide-react";
 
 /* ---------- Helper for uploading attachments ---------- */
@@ -219,6 +220,9 @@ function JobTracker({ user }) {
   });
   const [editingId, setEditingId] = useState(null);
 
+  // modal open/close
+  const [isFormOpen, setIsFormOpen] = useState(false);
+
   // Filters + search
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -381,6 +385,7 @@ function JobTracker({ user }) {
       } else {
         resetForm();
         await fetchJobs(); // also refresh cache
+        setIsFormOpen(false);
       }
     } else {
       payload.user_id = user.id;
@@ -391,8 +396,14 @@ function JobTracker({ user }) {
       } else {
         resetForm();
         await fetchJobs(); // refresh jobs + cache
+        setIsFormOpen(false);
       }
     }
+  };
+
+  const openForNewJob = () => {
+    resetForm();
+    setIsFormOpen(true);
   };
 
   const handleEdit = (job) => {
@@ -407,7 +418,7 @@ function JobTracker({ user }) {
       applied_date: job.applied_date ?? "",
       status: job.status ?? "not_applied",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setIsFormOpen(true);
   };
 
   const handleDelete = async (id) => {
@@ -773,174 +784,190 @@ function JobTracker({ user }) {
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="w-full px-6 lg:px-10 py-6 space-y-6">
-        {/* Form card */}
-        <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-lg font-semibold">
-                {editingId ? "Edit job" : "Add new job"}
-              </h2>
-              <p className="text-xs text-slate-500">
-                Save roles you come across so you don’t forget to apply.
-              </p>
-            </div>
-            {editingId && (
+      {/* Add / Edit Job Modal */}
+      {isFormOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-slate-200 p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {editingId ? "Edit job" : "Add new job"}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Save roles you come across so you don’t forget to apply.
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={resetForm}
-                className="text-xs text-slate-500 hover:text-slate-700 underline"
+                onClick={() => {
+                  resetForm();
+                  setIsFormOpen(false);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50"
+                aria-label="Close"
               >
-                Cancel editing
+                <X className="w-4 h-4" />
               </button>
-            )}
-          </div>
-
-          <form
-            onSubmit={handleSubmit}
-            className="grid grid-cols-1 md:grid-cols-2 gap-4"
-          >
-            {/* Left column */}
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700">
-                  Company <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  name="company"
-                  value={form.company}
-                  onChange={handleChange}
-                  className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                  placeholder="ASB, BNZ, Rocket Lab…"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700">
-                  Position <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  name="position"
-                  value={form.position}
-                  onChange={handleChange}
-                  className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                  placeholder="Systems Engineer, Integration Dev…"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700">
-                  Source URL
-                </label>
-                <input
-                  name="source_url"
-                  value={form.source_url}
-                  onChange={handleChange}
-                  className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                  placeholder="Link to the ad"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700">
-                  Date found <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  name="date_found"
-                  value={form.date_found}
-                  onChange={handleChange}
-                  className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                />
-              </div>
             </div>
 
-            {/* Right column */}
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700">
-                  Full ad / notes
-                </label>
-                <textarea
-                  name="description"
-                  value={form.description}
-                  onChange={handleChange}
-                  rows={6}
-                  className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                  placeholder="Paste the job ad or your notes here…"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  id="applied"
-                  type="checkbox"
-                  name="applied"
-                  checked={form.applied}
-                  onChange={handleChange}
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                />
-                <label
-                  htmlFor="applied"
-                  className="text-sm font-medium text-slate-700"
-                >
-                  Applied?
-                </label>
-              </div>
-
-              {form.applied && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Applied date
-                    </label>
-                    <input
-                      type="date"
-                      name="applied_date"
-                      value={form.applied_date || ""}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Status
-                    </label>
-                    <select
-                      name="status"
-                      value={form.status}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                    >
-                      <option value="not_applied">Not applied</option>
-                      <option value="pending">Pending</option>
-                      <option value="interview">Interview</option>
-                      <option value="offer">Offer</option>
-                      <option value="rejected">Rejected</option>
-                    </select>
-                  </div>
+            <form
+              onSubmit={handleSubmit}
+              className="grid grid-cols-1 md:grid-cols-2 gap-4"
+            >
+              {/* Left column */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Company <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    name="company"
+                    value={form.company}
+                    onChange={handleChange}
+                    className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                    placeholder="ASB, BNZ, Rocket Lab…"
+                  />
                 </div>
-              )}
-            </div>
 
-            <div className="md:col-span-2 flex justify-end pt-2">
-              <button
-                type="submit"
-                className="inline-flex items-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-1"
-              >
-                {editingId ? "Update job" : "Add job"}
-              </button>
-            </div>
-          </form>
-        </section>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Position <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    name="position"
+                    value={form.position}
+                    onChange={handleChange}
+                    className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                    placeholder="Systems Engineer, Integration Dev…"
+                  />
+                </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Source URL
+                  </label>
+                  <input
+                    name="source_url"
+                    value={form.source_url}
+                    onChange={handleChange}
+                    className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                    placeholder="Link to the ad"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Date found <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    name="date_found"
+                    value={form.date_found}
+                    onChange={handleChange}
+                    className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+              </div>
+
+              {/* Right column */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    Full ad / notes
+                  </label>
+                  <textarea
+                    name="description"
+                    value={form.description}
+                    onChange={handleChange}
+                    rows={6}
+                    className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                    placeholder="Paste the job ad or your notes here…"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    id="applied"
+                    type="checkbox"
+                    name="applied"
+                    checked={form.applied}
+                    onChange={handleChange}
+                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  />
+                  <label
+                    htmlFor="applied"
+                    className="text-sm font-medium text-slate-700"
+                  >
+                    Applied?
+                  </label>
+                </div>
+
+                {form.applied && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">
+                        Applied date
+                      </label>
+                      <input
+                        type="date"
+                        name="applied_date"
+                        value={form.applied_date || ""}
+                        onChange={handleChange}
+                        className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">
+                        Status
+                      </label>
+                      <select
+                        name="status"
+                        value={form.status}
+                        onChange={handleChange}
+                        className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                      >
+                        <option value="not_applied">Not applied</option>
+                        <option value="pending">Pending</option>
+                        <option value="interview">Interview</option>
+                        <option value="offer">Offer</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="md:col-span-2 flex justify-end pt-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm();
+                    setIsFormOpen(false);
+                  }}
+                  className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-1"
+                >
+                  {editingId ? "Update job" : "Add job"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Main content */}
+      <main className="w-full px-6 lg:px-10 py-6 space-y-6">
         {/* Jobs list */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
           {/* Header + filters */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold">Jobs</h2>
+              <h2 className="text-lg font-semibold">My Job Applications</h2>
               <p className="text-xs text-slate-500">
                 Total: {jobs.length}
                 {filteredJobs.length !== jobs.length && (
@@ -952,6 +979,16 @@ function JobTracker({ user }) {
             </div>
 
             <div className="flex flex-wrap gap-2 sm:items-center sm:justify-end">
+              {/* Add new job button */}
+              <button
+                type="button"
+                onClick={openForNewJob}
+                className="inline-flex items-center gap-1 rounded-full bg-sky-600 px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-sky-700"
+              >
+                <Plus className="w-3 h-3" />
+                Add job
+              </button>
+
               {/* Search */}
               <input
                 type="text"
@@ -985,7 +1022,6 @@ function JobTracker({ user }) {
                 <option value="applied">Applied only</option>
                 <option value="not_applied_only">Not applied only</option>
               </select>
-
 
               {/* Sort controls (helpful on mobile) */}
               <select
@@ -1048,7 +1084,7 @@ function JobTracker({ user }) {
             <p className="text-sm text-slate-500">Loading…</p>
           ) : jobs.length === 0 ? (
             <p className="text-sm text-slate-500">
-              No jobs yet. Add your first one above.
+              No jobs yet. Use &ldquo;Add job&rdquo; to create your first one.
             </p>
           ) : filteredJobs.length === 0 ? (
             <p className="text-sm text-slate-500">
