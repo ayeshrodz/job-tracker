@@ -770,7 +770,7 @@ function JobTracker({ user }) {
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
       {/* Top bar */}
-      <header className="border-b border-slate-200 bg-white">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="w-full px-6 lg:px-10 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
