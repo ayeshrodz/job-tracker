@@ -511,18 +511,17 @@ function JobTracker({ user }) {
   const endDisplay = startIndex + visibleJobs.length;
 
   const handleSort = (key) => {
+    // Go back to first page when sort changes
     setCurrentPage(1);
-    setSortKey((prevKey) => {
-      if (prevKey === key) {
-        setSortDirection((prevDir) =>
-          prevDir === "asc" ? "desc" : "asc"
-        );
-        return prevKey;
-      } else {
-        setSortDirection("asc");
-        return key;
-      }
-    });
+
+    if (sortKey === key) {
+      // Same column – toggle direction
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      // New column – start with ascending
+      setSortKey(key);
+      setSortDirection("asc");
+    }
   };
 
   const renderSortIndicator = (key) => {
