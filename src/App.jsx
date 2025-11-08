@@ -820,7 +820,7 @@ function JobTracker({ user }) {
                           {renderSortIndicator("position")}
                         </button>
                       </th>
-                      <th className="px-3 py-2 font-semibold text-slate-700">
+                      <th className="px-3 py-2 font-semibold text-slate-700 whitespace-nowrap w-[130px]">
                         <button
                           type="button"
                           onClick={() => handleSort("date_found")}
