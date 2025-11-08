@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
@@ -167,7 +168,7 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-/* ---------- Job Tracker UI (with caching, search, filter, sort, pagination) ---------- */
+/* ---------- Job Tracker UI (with caching, search, filter, sort, pagination, responsive list) ---------- */
 
 function JobTracker({ user }) {
   // Cache config
@@ -186,9 +187,9 @@ function JobTracker({ user }) {
     });
 
     const parts = formatter.formatToParts(now);
-    const year = parts.find((p) => p.type === "year").value;
-    const month = parts.find((p) => p.type === "month").value;
-    const day = parts.find((p) => p.type === "day").value;
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
 
     return `${year}-${month}-${day}`;
   };
@@ -221,6 +222,9 @@ function JobTracker({ user }) {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10); // 10, 20, 50
+
+  // Mobile card expansion
+  const [expandedJobId, setExpandedJobId] = useState(null);
 
   const fetchJobs = async () => {
     setLoading(true);
@@ -736,14 +740,14 @@ function JobTracker({ user }) {
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <div className="flex flex-wrap gap-2 sm:items-center sm:justify-end">
               {/* Search */}
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search company, position, notes…"
-                className="w-full sm:w-64 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+                className="w-full sm:w-60 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
               />
 
               {/* Status filter */}
@@ -781,6 +785,30 @@ function JobTracker({ user }) {
                 <option value={20}>20 / page</option>
                 <option value={50}>50 / page</option>
               </select>
+
+              {/* Sort controls (helpful on mobile) */}
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+              >
+                <option value="date_found">Sort: Date</option>
+                <option value="company">Sort: Company</option>
+                <option value="position">Sort: Position</option>
+                <option value="applied">Sort: Applied</option>
+                <option value="status">Sort: Status</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+                }
+                className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm hover:bg-slate-50"
+                title="Toggle sort direction"
+              >
+                {sortDirection === "asc" ? "↑" : "↓"}
+              </button>
             </div>
           </div>
 
@@ -796,7 +824,8 @@ function JobTracker({ user }) {
             </p>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              {/* Desktop / tablet table */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
                   <thead className="bg-slate-50">
                     <tr className="text-left">
@@ -1029,6 +1058,207 @@ function JobTracker({ user }) {
                 </table>
               </div>
 
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-3">
+                {visibleJobs.map((job) => {
+                  const jobAttachments = attachments.filter(
+                    (att) => att.job_id === job.id
+                  );
+                  const isExpanded = expandedJobId === job.id;
+
+                  return (
+                    <article
+                      key={job.id}
+                      className="rounded-xl border border-slate-200 bg-white shadow-sm p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h3 className="text-sm font-semibold text-slate-900">
+                            {job.position}
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            {job.company}
+                          </p>
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            Date found:{" "}
+                            <span className="font-medium text-slate-600">
+                              {job.date_found}
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            Applied:{" "}
+                            <span className="font-medium text-slate-600">
+                              {job.applied ? "Yes" : "No"}
+                            </span>
+                          </p>
+                        </div>
+                        <span
+                          className={
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium " +
+                            statusBadgeClass(job.status)
+                          }
+                        >
+                          {job.status ?? "not_applied"}
+                        </span>
+                      </div>
+
+                      {job.source_url && (
+                        <div className="mt-2">
+                          <a
+                            href={job.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] text-sky-600 hover:underline"
+                          >
+                            View ad
+                          </a>
+                        </div>
+                      )}
+
+                      <div className="mt-2 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedJobId((prev) =>
+                              prev === job.id ? null : job.id
+                            )
+                          }
+                          className="text-[11px] text-sky-700 hover:underline"
+                        >
+                          {isExpanded ? "Hide details" : "View details"}
+                        </button>
+                        <div className="space-x-2">
+                          <button
+                            onClick={() => handleEdit(job)}
+                            className="text-[11px] text-sky-700 hover:underline"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(job.id)}
+                            className="text-[11px] text-rose-600 hover:underline"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="mt-3 border-t border-slate-100 pt-2 space-y-2">
+                          {job.description && (
+                            <p className="text-[11px] text-slate-600 whitespace-pre-line">
+                              {job.description}
+                            </p>
+                          )}
+
+                          {/* File upload */}
+                          <div>
+                            <label className="block text-[11px] text-slate-500 mb-1">
+                              Attach file (PDF, DOCX, etc.)
+                            </label>
+                            <input
+                              type="file"
+                              className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+
+                                const { error, attachment } =
+                                  await uploadJobAttachment(
+                                    file,
+                                    job.id,
+                                    user.id
+                                  );
+
+                                if (error) {
+                                  console.error(error);
+                                  alert("Failed to upload attachment");
+                                } else {
+                                  setAttachments((prev) => {
+                                    const updated = [attachment, ...prev];
+                                    localStorage.setItem(
+                                      CACHE_ATTACH_KEY,
+                                      JSON.stringify(updated)
+                                    );
+                                    return updated;
+                                  });
+                                }
+
+                                e.target.value = "";
+                              }}
+                            />
+                          </div>
+
+                          {/* Attachments list */}
+                          {jobAttachments.length > 0 && (
+                            <div className="space-y-1">
+                              {jobAttachments.map((att) => (
+                                <div
+                                  key={att.id}
+                                  className="flex items-center justify-between gap-2"
+                                >
+                                  <a
+                                    href={getPublicUrl(att.file_path)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[11px] text-sky-700 hover:underline truncate max-w-[160px]"
+                                    title={att.file_name}
+                                  >
+                                    {att.file_name}
+                                  </a>
+                                  <button
+                                    className="text-[10px] text-rose-500 hover:underline"
+                                    onClick={async () => {
+                                      const { error: storageError } =
+                                        await supabase.storage
+                                          .from("job-attachments")
+                                          .remove([att.file_path]);
+
+                                      if (storageError) {
+                                        console.error(storageError);
+                                        alert("Failed to delete file");
+                                        return;
+                                      }
+
+                                      const { error: dbError } =
+                                        await supabase
+                                          .from("job_attachments")
+                                          .delete()
+                                          .eq("id", att.id);
+
+                                      if (dbError) {
+                                        console.error(dbError);
+                                        alert(
+                                          "Failed to delete attachment record"
+                                        );
+                                        return;
+                                      }
+
+                                      setAttachments((prev) => {
+                                        const updated = prev.filter(
+                                          (x) => x.id !== att.id
+                                        );
+                                        localStorage.setItem(
+                                          CACHE_ATTACH_KEY,
+                                          JSON.stringify(updated)
+                                        );
+                                        return updated;
+                                      });
+                                    }}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+
               {/* Pagination controls */}
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500">
                 <div>
@@ -1059,9 +1289,7 @@ function JobTracker({ user }) {
                   <button
                     type="button"
                     onClick={() =>
-                      setCurrentPage((p) =>
-                        Math.min(totalPages, p + 1)
-                      )
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
                     }
                     disabled={safePage === totalPages}
                     className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs disabled:opacity-40 hover:bg-slate-50"
