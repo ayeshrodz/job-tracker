@@ -986,16 +986,6 @@ function JobTracker({ user }) {
                 <option value="not_applied_only">Not applied only</option>
               </select>
 
-              {/* Page size */}
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
-              >
-                <option value={10}>10 / page</option>
-                <option value={20}>20 / page</option>
-                <option value={50}>50 / page</option>
-              </select>
 
               {/* Sort controls (helpful on mobile) */}
               <select
@@ -1328,9 +1318,25 @@ function JobTracker({ user }) {
               </div>
 
               {/* Pagination controls */}
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500">
-                <div>
-                  Showing {startDisplay}–{endDisplay} of {totalItems} jobs
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500">
+                <div className="flex items-center gap-3">
+                  <span>
+                    Showing {startDisplay}–{endDisplay} of {totalItems} jobs
+                  </span>
+                  <div className="inline-flex items-center gap-1">
+                    <span className="text-[11px] text-slate-400">
+                      Rows per page
+                    </span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                      className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="inline-flex items-center gap-1">
                   <button
