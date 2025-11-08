@@ -29,3 +29,56 @@ With Supabase providing authentication and database management, each user secure
    ```bash
    git clone https://github.com/yourusername/job-tracker.git
    cd job-tracker
+   ```
+2. Install dependencies  
+   ```bash
+   npm install
+   ```
+3. Start the development server  
+   ```bash
+   npm run dev
+   ```
+
+## 🌿 Git Branches
+
+To maintain a clean and consistent workflow, use clear branch naming conventions based on the type of work being done.
+
+### a) New Features
+
+**Prefix:** `feature/`
+
+**Examples:**
+- `feature/job-filters-ui`
+- `feature/add-supabase-auth`
+
+### b) Bug Fixes
+
+**Prefix:** `fix/`
+
+**Examples:**
+- `fix/job-date-sorting`
+
+If issue numbers are linked to raised issues:
+- `fix/#23-job-status-not-saving`
+
+### c) Docs & README
+
+**Prefix:** `docs/`
+
+**Examples:**
+- `docs/update-readme-for-setup`
+- `docs/add-api-usage-section`
+
+### d) Refactors / Cleanup
+
+**Prefix:** `refactor/`
+
+**Examples:**
+- `refactor/job-card-component`
+
+### e) Hotfix (Urgent Production Issues)
+
+**Prefix:** `hotfix/`
+
+**Examples:**
+- `hotfix/fix-prod-build-failure`
