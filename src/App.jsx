@@ -1,6 +1,44 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
+/* ---------- Helper for uploading attachments ---------- */
+
+async function uploadJobAttachment(file, jobId, userId) {
+  if (!file) {
+    return { error: new Error("No file provided") };
+  }
+
+  const cleanName = file.name.replace(/\s+/g, "_");
+  const path = `${userId}/${jobId}/${Date.now()}-${cleanName}`;
+
+  // Upload to Supabase Storage
+  const { data, error } = await supabase.storage
+    .from("job-attachments")   // 👈 make sure this matches your bucket name
+    .upload(path, file);
+
+  if (error) {
+    console.error("Storage upload error:", error);
+    return { error };
+  }
+
+  // Save metadata row in job_attachments table
+  const { error: insertError } = await supabase.from("job_attachments").insert({
+    job_id: jobId,
+    user_id: userId,
+    file_path: data.path,
+    file_name: file.name,
+    file_type: file.type || null,
+  });
+
+  if (insertError) {
+    console.error("DB insert error (job_attachments):", insertError);
+    return { error: insertError };
+  }
+
+  return { path: data.path };
+}
+
+
 /* ---------- Auth UI ---------- */
 
 function AuthScreen({ onAuth }) {
@@ -127,10 +165,11 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-/* ---------- Job Tracker UI (same as before, but talking to Supabase) ---------- */
+/* ---------- Job Tracker UI (with attachments) ---------- */
 
 function JobTracker({ user }) {
   const [jobs, setJobs] = useState([]);
+  const [attachments, setAttachments] = useState([]); // all attachments for this user
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     company: "",
@@ -159,8 +198,22 @@ function JobTracker({ user }) {
     setLoading(false);
   };
 
+  const fetchAttachments = async () => {
+    const { data, error } = await supabase
+      .from("job_attachments")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching attachments:", error);
+    } else {
+      setAttachments(data || []);
+    }
+  };
+
   useEffect(() => {
     fetchJobs();
+    fetchAttachments();
   }, []);
 
   const resetForm = () => {
@@ -247,6 +300,8 @@ function JobTracker({ user }) {
       console.error("Error deleting job:", error);
     } else {
       setJobs((prev) => prev.filter((j) => j.id !== id));
+      // attachments are on delete cascade in DB, but we could also refresh:
+      await fetchAttachments();
     }
   };
 
@@ -264,6 +319,13 @@ function JobTracker({ user }) {
       default:
         return "bg-slate-100 text-slate-700";
     }
+  };
+
+  const getPublicUrl = (filePath) => {
+    const { data } = supabase.storage
+      .from("job-attachments")
+      .getPublicUrl(filePath);
+    return data.publicUrl;
   };
 
   return (
@@ -291,7 +353,7 @@ function JobTracker({ user }) {
         </div>
       </header>
 
-      {/* The rest is exactly the styled UI we already had */}
+      {/* Main content */}
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {/* Form card */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -487,61 +549,158 @@ function JobTracker({ user }) {
                       Status
                     </th>
                     <th className="px-3 py-2 font-semibold text-slate-700">
-                      Actions
+                      Actions / Attachments
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {jobs.map((job) => (
-                    <tr key={job.id} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 align-top">
-                        <div className="font-medium">{job.company}</div>
-                        {job.source_url && (
-                          <a
-                            href={job.source_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-sky-600 hover:underline"
+                  {jobs.map((job) => {
+                    const jobAttachments = attachments.filter(
+                      (att) => att.job_id === job.id
+                    );
+
+                    return (
+                      <tr key={job.id} className="hover:bg-slate-50">
+                        <td className="px-3 py-2 align-top">
+                          <div className="font-medium">{job.company}</div>
+                          {job.source_url && (
+                            <a
+                              href={job.source_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-sky-600 hover:underline"
+                            >
+                              View ad
+                            </a>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <div>{job.position}</div>
+                        </td>
+                        <td className="px-3 py-2 align-top whitespace-nowrap">
+                          {job.date_found}
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          {job.applied ? "Yes" : "No"}
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <span
+                            className={
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
+                              statusBadgeClass(job.status)
+                            }
                           >
-                            View ad
-                          </a>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 align-top">
-                        <div>{job.position}</div>
-                      </td>
-                      <td className="px-3 py-2 align-top whitespace-nowrap">
-                        {job.date_found}
-                      </td>
-                      <td className="px-3 py-2 align-top">
-                        {job.applied ? "Yes" : "No"}
-                      </td>
-                      <td className="px-3 py-2 align-top">
-                        <span
-                          className={
-                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
-                            statusBadgeClass(job.status)
-                          }
-                        >
-                          {job.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 align-top space-x-2">
-                        <button
-                          onClick={() => handleEdit(job)}
-                          className="text-xs text-sky-700 hover:underline"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(job.id)}
-                          className="text-xs text-rose-600 hover:underline"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                            {job.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          <div className="space-y-2">
+                            <div className="space-x-2">
+                              <button
+                                onClick={() => handleEdit(job)}
+                                className="text-xs text-sky-700 hover:underline"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDelete(job.id)}
+                                className="text-xs text-rose-600 hover:underline"
+                              >
+                                Delete
+                              </button>
+                            </div>
+
+                            {/* File upload */}
+                            <div className="mt-1">
+                              <label className="block text-[11px] text-slate-500 mb-1">
+                                Attach file (PDF, DOCX, etc.)
+                              </label>
+                              <input
+                                type="file"
+                                className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+
+                                  const { error } = await uploadJobAttachment(
+                                    file,
+                                    job.id,
+                                    user.id
+                                  );
+
+                                  if (error) {
+                                    console.error(error);
+                                    alert("Failed to upload attachment");
+                                  } else {
+                                    await fetchAttachments();
+                                  }
+
+                                  e.target.value = "";
+                                }}
+                              />
+                            </div>
+
+                            {/* Attachments list */}
+                            {jobAttachments.length > 0 && (
+                              <div className="mt-1 space-y-1">
+                                {jobAttachments.map((att) => (
+                                  <div
+                                    key={att.id}
+                                    className="flex items-center justify-between gap-2"
+                                  >
+                                    <a
+                                      href={getPublicUrl(att.file_path)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-[11px] text-sky-700 hover:underline truncate max-w-[150px]"
+                                      title={att.file_name}
+                                    >
+                                      {att.file_name}
+                                    </a>
+                                    <button
+                                      className="text-[10px] text-rose-500 hover:underline"
+                                      onClick={async () => {
+                                        // Delete from storage
+                                        const { error: storageError } =
+                                          await supabase.storage
+                                            .from("job-attachments")
+                                            .remove([att.file_path]);
+
+                                        if (storageError) {
+                                          console.error(storageError);
+                                          alert("Failed to delete file");
+                                          return;
+                                        }
+
+                                        // Delete DB record
+                                        const { error: dbError } =
+                                          await supabase
+                                            .from("job_attachments")
+                                            .delete()
+                                            .eq("id", att.id);
+
+                                        if (dbError) {
+                                          console.error(dbError);
+                                          alert(
+                                            "Failed to delete attachment record"
+                                          );
+                                          return;
+                                        }
+
+                                        await fetchAttachments();
+                                      }}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
