@@ -1,6 +1,15 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
+import {
+  Link2,
+  Calendar,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  LayoutList,
+  LayoutGrid,
+} from "lucide-react";
 
 /* ---------- Helper for uploading attachments ---------- */
 
@@ -225,6 +234,9 @@ function JobTracker({ user }) {
 
   // Mobile card expansion
   const [expandedJobId, setExpandedJobId] = useState(null);
+
+  // Desktop view mode: table or cards
+  const [desktopViewMode, setDesktopViewMode] = useState("table");
 
   const fetchJobs = async () => {
     setLoading(true);
@@ -537,11 +549,210 @@ function JobTracker({ user }) {
     );
   };
 
+  // Reusable card renderer (used on mobile and desktop “cards” mode)
+  const renderJobCard = (job, jobAttachments) => {
+    const isExpanded = expandedJobId === job.id;
+
+    return (
+      <article
+        key={job.id}
+        className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 flex flex-col gap-2"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700 shadow-sm">
+              {(job.company || "?").charAt(0).toUpperCase()}
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-slate-900">
+                {job.position}
+              </h3>
+              <p className="text-xs text-slate-500">{job.company}</p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                  <Calendar className="w-3 h-3" />
+                  {job.date_found}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
+                  {job.applied ? "Applied" : "Not applied"}
+                </span>
+              </div>
+            </div>
+          </div>
+          <span
+            className={
+              "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium " +
+              statusBadgeClass(job.status)
+            }
+          >
+            {job.status ?? "not_applied"}
+          </span>
+        </div>
+
+        {job.source_url && (
+          <div className="mt-2">
+            <a
+              href={job.source_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] text-sky-600 hover:underline"
+            >
+              <Link2 className="w-3 h-3" />
+              <span>View ad</span>
+            </a>
+          </div>
+        )}
+
+        <div className="mt-2 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() =>
+              setExpandedJobId((prev) => (prev === job.id ? null : job.id))
+            }
+            className="inline-flex items-center gap-1 text-[11px] text-sky-700 hover:underline"
+          >
+            {isExpanded ? (
+              <>
+                Hide details
+                <ChevronUp className="w-3 h-3" />
+              </>
+            ) : (
+              <>
+                View details
+                <ChevronDown className="w-3 h-3" />
+              </>
+            )}
+          </button>
+          <div className="space-x-2">
+            <button
+              onClick={() => handleEdit(job)}
+              className="text-[11px] text-sky-700 hover:underline"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => handleDelete(job.id)}
+              className="text-[11px] text-rose-600 hover:underline"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div className="mt-3 border-t border-slate-100 pt-2 space-y-2">
+            {job.description && (
+              <p className="text-[11px] text-slate-600 whitespace-pre-line">
+                {job.description}
+              </p>
+            )}
+
+            {/* File upload */}
+            <div>
+              <label className="block text-[11px] text-slate-500 mb-1">
+                Attach file (PDF, DOCX, etc.)
+              </label>
+              <input
+                type="file"
+                className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+
+                  const { error, attachment } = await uploadJobAttachment(
+                    file,
+                    job.id,
+                    user.id
+                  );
+
+                  if (error) {
+                    console.error(error);
+                    alert("Failed to upload attachment");
+                  } else {
+                    setAttachments((prev) => {
+                      const updated = [attachment, ...prev];
+                      localStorage.setItem(
+                        CACHE_ATTACH_KEY,
+                        JSON.stringify(updated)
+                      );
+                      return updated;
+                    });
+                  }
+
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
+            {/* Attachments list */}
+            {jobAttachments.length > 0 && (
+              <div className="space-y-1">
+                {jobAttachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <a
+                      href={getPublicUrl(att.file_path)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-sky-700 hover:underline truncate max-w-[160px]"
+                      title={att.file_name}
+                    >
+                      <FileText className="w-3 h-3" />
+                      <span className="truncate">{att.file_name}</span>
+                    </a>
+                    <button
+                      className="text-[10px] text-rose-500 hover:underline"
+                      onClick={async () => {
+                        const { error: storageError } = await supabase.storage
+                          .from("job-attachments")
+                          .remove([att.file_path]);
+
+                        if (storageError) {
+                          console.error(storageError);
+                          alert("Failed to delete file");
+                          return;
+                        }
+
+                        const { error: dbError } = await supabase
+                          .from("job_attachments")
+                          .delete()
+                          .eq("id", att.id);
+
+                        if (dbError) {
+                          console.error(dbError);
+                          alert("Failed to delete attachment record");
+                          return;
+                        }
+
+                        setAttachments((prev) => {
+                          const updated = prev.filter((x) => x.id !== att.id);
+                          localStorage.setItem(
+                            CACHE_ATTACH_KEY,
+                            JSON.stringify(updated)
+                          );
+                          return updated;
+                        });
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </article>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
       {/* Top bar */}
       <header className="border-b border-slate-200 bg-white">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="w-full px-6 lg:px-10 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
               Job Applications Tracker
@@ -563,7 +774,7 @@ function JobTracker({ user }) {
       </header>
 
       {/* Main content */}
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      <main className="w-full px-6 lg:px-10 py-6 space-y-6">
         {/* Form card */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center justify-between mb-4">
@@ -809,6 +1020,37 @@ function JobTracker({ user }) {
               >
                 {sortDirection === "asc" ? "↑" : "↓"}
               </button>
+
+              {/* Desktop view toggle */}
+              <div className="hidden md:inline-flex items-center gap-1 border-l border-slate-200 pl-2 ml-1">
+                <span className="text-[11px] text-slate-400 mr-1">View</span>
+                <button
+                  type="button"
+                  onClick={() => setDesktopViewMode("table")}
+                  className={
+                    "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] border " +
+                    (desktopViewMode === "table"
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50")
+                  }
+                >
+                  <LayoutList className="w-3 h-3" />
+                  Table
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDesktopViewMode("cards")}
+                  className={
+                    "inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] border " +
+                    (desktopViewMode === "cards"
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50")
+                  }
+                >
+                  <LayoutGrid className="w-3 h-3" />
+                  Cards
+                </button>
+              </div>
             </div>
           </div>
 
@@ -825,438 +1067,264 @@ function JobTracker({ user }) {
           ) : (
             <>
               {/* Desktop / tablet table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="min-w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
-                  <thead className="bg-slate-50">
-                    <tr className="text-left">
-                      <th className="px-3 py-2 font-semibold text-slate-700">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("company")}
-                          className="inline-flex items-center hover:text-slate-900"
-                        >
-                          Company
-                          {renderSortIndicator("company")}
-                        </button>
-                      </th>
-                      <th className="px-3 py-2 font-semibold text-slate-700">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("position")}
-                          className="inline-flex items-center hover:text-slate-900"
-                        >
-                          Position
-                          {renderSortIndicator("position")}
-                        </button>
-                      </th>
-                      <th className="px-3 py-2 font-semibold text-slate-700 whitespace-nowrap w-[130px]">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("date_found")}
-                          className="inline-flex items-center hover:text-slate-900"
-                        >
-                          Date found
-                          {renderSortIndicator("date_found")}
-                        </button>
-                      </th>
-                      <th className="px-3 py-2 font-semibold text-slate-700">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("applied")}
-                          className="inline-flex items-center hover:text-slate-900"
-                        >
-                          Applied
-                          {renderSortIndicator("applied")}
-                        </button>
-                      </th>
-                      <th className="px-3 py-2 font-semibold text-slate-700">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("status")}
-                          className="inline-flex items-center hover:text-slate-900"
-                        >
-                          Status
-                          {renderSortIndicator("status")}
-                        </button>
-                      </th>
-                      <th className="px-3 py-2 font-semibold text-slate-700">
-                        Actions / Attachments
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {visibleJobs.map((job) => {
-                      const jobAttachments = attachments.filter(
-                        (att) => att.job_id === job.id
-                      );
+              {desktopViewMode === "table" && (
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="min-w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
+                    <thead className="bg-slate-50">
+                      <tr className="text-left">
+                        <th className="px-3 py-2 font-semibold text-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => handleSort("company")}
+                            className="inline-flex items-center hover:text-slate-900"
+                          >
+                            Company
+                            {renderSortIndicator("company")}
+                          </button>
+                        </th>
+                        <th className="px-3 py-2 font-semibold text-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => handleSort("position")}
+                            className="inline-flex items-center hover:text-slate-900"
+                          >
+                            Position
+                            {renderSortIndicator("position")}
+                          </button>
+                        </th>
+                        <th className="px-3 py-2 font-semibold text-slate-700 whitespace-nowrap w-[130px]">
+                          <button
+                            type="button"
+                            onClick={() => handleSort("date_found")}
+                            className="inline-flex items-center hover:text-slate-900"
+                          >
+                            Date found
+                            {renderSortIndicator("date_found")}
+                          </button>
+                        </th>
+                        <th className="px-3 py-2 font-semibold text-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => handleSort("applied")}
+                            className="inline-flex items-center hover:text-slate-900"
+                          >
+                            Applied
+                            {renderSortIndicator("applied")}
+                          </button>
+                        </th>
+                        <th className="px-3 py-2 font-semibold text-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => handleSort("status")}
+                            className="inline-flex items-center hover:text-slate-900"
+                          >
+                            Status
+                            {renderSortIndicator("status")}
+                          </button>
+                        </th>
+                        <th className="px-3 py-2 font-semibold text-slate-700">
+                          Actions / Attachments
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {visibleJobs.map((job) => {
+                        const jobAttachments = attachments.filter(
+                          (att) => att.job_id === job.id
+                        );
 
-                      return (
-                        <tr key={job.id} className="hover:bg-slate-50">
-                          <td className="px-3 py-2 align-top">
-                            <div className="font-medium">{job.company}</div>
-                            {job.source_url && (
-                              <a
-                                href={job.source_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs text-sky-600 hover:underline"
-                              >
-                                View ad
-                              </a>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 align-top">
-                            <div>{job.position}</div>
-                          </td>
-                          <td className="px-3 py-2 align-top whitespace-nowrap">
-                            {job.date_found}
-                          </td>
-                          <td className="px-3 py-2 align-top">
-                            {job.applied ? "Yes" : "No"}
-                          </td>
-                          <td className="px-3 py-2 align-top">
-                            <span
-                              className={
-                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
-                                statusBadgeClass(job.status)
-                              }
-                            >
-                              {job.status ?? "not_applied"}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 align-top">
-                            <div className="space-y-2">
-                              <div className="space-x-2">
-                                <button
-                                  onClick={() => handleEdit(job)}
-                                  className="text-xs text-sky-700 hover:underline"
+                        return (
+                          <tr key={job.id} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 align-top">
+                              <div className="font-medium">{job.company}</div>
+                              {job.source_url && (
+                                <a
+                                  href={job.source_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs text-sky-600 hover:underline"
                                 >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(job.id)}
-                                  className="text-xs text-rose-600 hover:underline"
-                                >
-                                  Delete
-                                </button>
-                              </div>
-
-                              {/* File upload */}
-                              <div className="mt-1">
-                                <label className="block text-[11px] text-slate-500 mb-1">
-                                  Attach file (PDF, DOCX, etc.)
-                                </label>
-                                <input
-                                  type="file"
-                                  className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-
-                                    const { error, attachment } =
-                                      await uploadJobAttachment(
-                                        file,
-                                        job.id,
-                                        user.id
-                                      );
-
-                                    if (error) {
-                                      console.error(error);
-                                      alert("Failed to upload attachment");
-                                    } else {
-                                      // Merge new attachment into state + cache
-                                      setAttachments((prev) => {
-                                        const updated = [
-                                          attachment,
-                                          ...prev,
-                                        ];
-                                        localStorage.setItem(
-                                          CACHE_ATTACH_KEY,
-                                          JSON.stringify(updated)
-                                        );
-                                        return updated;
-                                      });
-                                    }
-
-                                    e.target.value = "";
-                                  }}
-                                />
-                              </div>
-
-                              {/* Attachments list - LINKS ONLY */}
-                              {jobAttachments.length > 0 && (
-                                <div className="mt-1 space-y-1">
-                                  {jobAttachments.map((att) => (
-                                    <div
-                                      key={att.id}
-                                      className="flex items-center justify-between gap-2"
-                                    >
-                                      <a
-                                        href={getPublicUrl(att.file_path)}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="text-[11px] text-sky-700 hover:underline truncate max-w-[150px]"
-                                        title={att.file_name}
-                                      >
-                                        {att.file_name}
-                                      </a>
-                                      <button
-                                        className="text-[10px] text-rose-500 hover:underline"
-                                        onClick={async () => {
-                                          // Delete from storage
-                                          const { error: storageError } =
-                                            await supabase.storage
-                                              .from("job-attachments")
-                                              .remove([att.file_path]);
-
-                                          if (storageError) {
-                                            console.error(storageError);
-                                            alert("Failed to delete file");
-                                            return;
-                                          }
-
-                                          // Delete DB record
-                                          const { error: dbError } =
-                                            await supabase
-                                              .from("job_attachments")
-                                              .delete()
-                                              .eq("id", att.id);
-
-                                          if (dbError) {
-                                            console.error(dbError);
-                                            alert(
-                                              "Failed to delete attachment record"
-                                            );
-                                            return;
-                                          }
-
-                                          // Update local attachments state + cache
-                                          setAttachments((prev) => {
-                                            const updated = prev.filter(
-                                              (x) => x.id !== att.id
-                                            );
-                                            localStorage.setItem(
-                                              CACHE_ATTACH_KEY,
-                                              JSON.stringify(updated)
-                                            );
-                                            return updated;
-                                          });
-                                        }}
-                                      >
-                                        Delete
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
+                                  View ad
+                                </a>
                               )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile cards */}
-              <div className="md:hidden space-y-3">
-                {visibleJobs.map((job) => {
-                  const jobAttachments = attachments.filter(
-                    (att) => att.job_id === job.id
-                  );
-                  const isExpanded = expandedJobId === job.id;
-
-                  return (
-                    <article
-                      key={job.id}
-                      className="rounded-xl border border-slate-200 bg-white shadow-sm p-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="text-sm font-semibold text-slate-900">
-                            {job.position}
-                          </h3>
-                          <p className="text-xs text-slate-500">
-                            {job.company}
-                          </p>
-                          <p className="mt-1 text-[11px] text-slate-400">
-                            Date found:{" "}
-                            <span className="font-medium text-slate-600">
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              <div>{job.position}</div>
+                            </td>
+                            <td className="px-3 py-2 align-top whitespace-nowrap">
                               {job.date_found}
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-slate-400">
-                            Applied:{" "}
-                            <span className="font-medium text-slate-600">
+                            </td>
+                            <td className="px-3 py-2 align-top">
                               {job.applied ? "Yes" : "No"}
-                            </span>
-                          </p>
-                        </div>
-                        <span
-                          className={
-                            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium " +
-                            statusBadgeClass(job.status)
-                          }
-                        >
-                          {job.status ?? "not_applied"}
-                        </span>
-                      </div>
-
-                      {job.source_url && (
-                        <div className="mt-2">
-                          <a
-                            href={job.source_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[11px] text-sky-600 hover:underline"
-                          >
-                            View ad
-                          </a>
-                        </div>
-                      )}
-
-                      <div className="mt-2 flex items-center justify-between">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedJobId((prev) =>
-                              prev === job.id ? null : job.id
-                            )
-                          }
-                          className="text-[11px] text-sky-700 hover:underline"
-                        >
-                          {isExpanded ? "Hide details" : "View details"}
-                        </button>
-                        <div className="space-x-2">
-                          <button
-                            onClick={() => handleEdit(job)}
-                            className="text-[11px] text-sky-700 hover:underline"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(job.id)}
-                            className="text-[11px] text-rose-600 hover:underline"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="mt-3 border-t border-slate-100 pt-2 space-y-2">
-                          {job.description && (
-                            <p className="text-[11px] text-slate-600 whitespace-pre-line">
-                              {job.description}
-                            </p>
-                          )}
-
-                          {/* File upload */}
-                          <div>
-                            <label className="block text-[11px] text-slate-500 mb-1">
-                              Attach file (PDF, DOCX, etc.)
-                            </label>
-                            <input
-                              type="file"
-                              className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-
-                                const { error, attachment } =
-                                  await uploadJobAttachment(
-                                    file,
-                                    job.id,
-                                    user.id
-                                  );
-
-                                if (error) {
-                                  console.error(error);
-                                  alert("Failed to upload attachment");
-                                } else {
-                                  setAttachments((prev) => {
-                                    const updated = [attachment, ...prev];
-                                    localStorage.setItem(
-                                      CACHE_ATTACH_KEY,
-                                      JSON.stringify(updated)
-                                    );
-                                    return updated;
-                                  });
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              <span
+                                className={
+                                  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
+                                  statusBadgeClass(job.status)
                                 }
-
-                                e.target.value = "";
-                              }}
-                            />
-                          </div>
-
-                          {/* Attachments list */}
-                          {jobAttachments.length > 0 && (
-                            <div className="space-y-1">
-                              {jobAttachments.map((att) => (
-                                <div
-                                  key={att.id}
-                                  className="flex items-center justify-between gap-2"
-                                >
-                                  <a
-                                    href={getPublicUrl(att.file_path)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-[11px] text-sky-700 hover:underline truncate max-w-[160px]"
-                                    title={att.file_name}
-                                  >
-                                    {att.file_name}
-                                  </a>
+                              >
+                                {job.status ?? "not_applied"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              <div className="space-y-2">
+                                <div className="space-x-2">
                                   <button
-                                    className="text-[10px] text-rose-500 hover:underline"
-                                    onClick={async () => {
-                                      const { error: storageError } =
-                                        await supabase.storage
-                                          .from("job-attachments")
-                                          .remove([att.file_path]);
-
-                                      if (storageError) {
-                                        console.error(storageError);
-                                        alert("Failed to delete file");
-                                        return;
-                                      }
-
-                                      const { error: dbError } =
-                                        await supabase
-                                          .from("job_attachments")
-                                          .delete()
-                                          .eq("id", att.id);
-
-                                      if (dbError) {
-                                        console.error(dbError);
-                                        alert(
-                                          "Failed to delete attachment record"
-                                        );
-                                        return;
-                                      }
-
-                                      setAttachments((prev) => {
-                                        const updated = prev.filter(
-                                          (x) => x.id !== att.id
-                                        );
-                                        localStorage.setItem(
-                                          CACHE_ATTACH_KEY,
-                                          JSON.stringify(updated)
-                                        );
-                                        return updated;
-                                      });
-                                    }}
+                                    onClick={() => handleEdit(job)}
+                                    className="text-xs text-sky-700 hover:underline"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(job.id)}
+                                    className="text-xs text-rose-600 hover:underline"
                                   >
                                     Delete
                                   </button>
                                 </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
+
+                                {/* File upload */}
+                                <div className="mt-1">
+                                  <label className="block text-[11px] text-slate-500 mb-1">
+                                    Attach file (PDF, DOCX, etc.)
+                                  </label>
+                                  <input
+                                    type="file"
+                                    className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+
+                                      const { error, attachment } =
+                                        await uploadJobAttachment(
+                                          file,
+                                          job.id,
+                                          user.id
+                                        );
+
+                                      if (error) {
+                                        console.error(error);
+                                        alert("Failed to upload attachment");
+                                      } else {
+                                        // Merge new attachment into state + cache
+                                        setAttachments((prev) => {
+                                          const updated = [
+                                            attachment,
+                                            ...prev,
+                                          ];
+                                          localStorage.setItem(
+                                            CACHE_ATTACH_KEY,
+                                            JSON.stringify(updated)
+                                          );
+                                          return updated;
+                                        });
+                                      }
+
+                                      e.target.value = "";
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Attachments list - LINKS ONLY */}
+                                {jobAttachments.length > 0 && (
+                                  <div className="mt-1 space-y-1">
+                                    {jobAttachments.map((att) => (
+                                      <div
+                                        key={att.id}
+                                        className="flex items-center justify-between gap-2"
+                                      >
+                                        <a
+                                          href={getPublicUrl(att.file_path)}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1 text-[11px] text-sky-700 hover:underline truncate max-w-[150px]"
+                                          title={att.file_name}
+                                        >
+                                          <FileText className="w-3 h-3" />
+                                          <span className="truncate">
+                                            {att.file_name}
+                                          </span>
+                                        </a>
+                                        <button
+                                          className="text-[10px] text-rose-500 hover:underline"
+                                          onClick={async () => {
+                                            // Delete from storage
+                                            const { error: storageError } =
+                                              await supabase.storage
+                                                .from("job-attachments")
+                                                .remove([att.file_path]);
+
+                                            if (storageError) {
+                                              console.error(storageError);
+                                              alert("Failed to delete file");
+                                              return;
+                                            }
+
+                                            // Delete DB record
+                                            const { error: dbError } =
+                                              await supabase
+                                                .from("job_attachments")
+                                                .delete()
+                                                .eq("id", att.id);
+
+                                            if (dbError) {
+                                              console.error(dbError);
+                                              alert(
+                                                "Failed to delete attachment record"
+                                              );
+                                              return;
+                                            }
+
+                                            // Update local attachments state + cache
+                                            setAttachments((prev) => {
+                                              const updated = prev.filter(
+                                                (x) => x.id !== att.id
+                                              );
+                                              localStorage.setItem(
+                                                CACHE_ATTACH_KEY,
+                                                JSON.stringify(updated)
+                                              );
+                                              return updated;
+                                            });
+                                          }}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Desktop cards mode */}
+              {desktopViewMode === "cards" && (
+                <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                  {visibleJobs.map((job) =>
+                    renderJobCard(
+                      job,
+                      attachments.filter((att) => att.job_id === job.id)
+                    )
+                  )}
+                </div>
+              )}
+
+              {/* Mobile cards (always cards on small screens) */}
+              <div className="md:hidden space-y-3">
+                {visibleJobs.map((job) =>
+                  renderJobCard(
+                    job,
+                    attachments.filter((att) => att.job_id === job.id)
+                  )
+                )}
               </div>
 
               {/* Pagination controls */}
