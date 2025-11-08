@@ -167,7 +167,7 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-/* ---------- Job Tracker UI (with caching + lightweight attachments) ---------- */
+/* ---------- Job Tracker UI (with caching, search, filter, sort, pagination) ---------- */
 
 function JobTracker({ user }) {
   // Cache config
@@ -208,6 +208,19 @@ function JobTracker({ user }) {
     status: "not_applied",
   });
   const [editingId, setEditingId] = useState(null);
+
+  // Filters + search
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [appliedFilter, setAppliedFilter] = useState("all");
+
+  // Sorting
+  const [sortKey, setSortKey] = useState("applied"); // company, position, date_found, applied, status
+  const [sortDirection, setSortDirection] = useState("desc"); // asc | desc
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10); // 10, 20, 50
 
   const fetchJobs = async () => {
     setLoading(true);
@@ -286,6 +299,11 @@ function JobTracker({ user }) {
       setLoading(false);
     }
   }, []);
+
+  // Reset page when filters/search or page size change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, appliedFilter, pageSize]);
 
   const resetForm = () => {
     setForm({
@@ -418,6 +436,101 @@ function JobTracker({ user }) {
       .from("job-attachments")
       .getPublicUrl(filePath);
     return data.publicUrl;
+  };
+
+  // ---------- Filtering, sorting, pagination ----------
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+
+  const filteredJobs = jobs.filter((job) => {
+    // text search across a few fields
+    const matchesSearch =
+      !normalizedSearch ||
+      (job.company ?? "").toLowerCase().includes(normalizedSearch) ||
+      (job.position ?? "").toLowerCase().includes(normalizedSearch) ||
+      (job.description ?? "").toLowerCase().includes(normalizedSearch) ||
+      (job.source_url ?? "").toLowerCase().includes(normalizedSearch);
+
+    // status filter
+    const jobStatus = job.status ?? "not_applied";
+    const matchesStatus =
+      statusFilter === "all" || jobStatus === statusFilter;
+
+    // applied filter
+    let matchesApplied = true;
+    if (appliedFilter === "applied") {
+      matchesApplied = !!job.applied;
+    } else if (appliedFilter === "not_applied_only") {
+      matchesApplied = !job.applied;
+    }
+
+    return matchesSearch && matchesStatus && matchesApplied;
+  });
+
+  const getSortValue = (job) => {
+    switch (sortKey) {
+      case "company":
+        return (job.company ?? "").toLowerCase();
+      case "position":
+        return (job.position ?? "").toLowerCase();
+      case "status":
+        return (job.status ?? "not_applied").toLowerCase();
+      case "applied":
+        return job.applied ? 1 : 0;
+      case "date_found":
+      default:
+        // ISO date string – safe to compare as string
+        return job.date_found ?? "";
+    }
+  };
+
+  const sortedJobs = [...filteredJobs].sort((a, b) => {
+    const v1 = getSortValue(a);
+    const v2 = getSortValue(b);
+
+    if (v1 === v2) return 0;
+
+    let result;
+    if (typeof v1 === "number" && typeof v2 === "number") {
+      result = v1 - v2;
+    } else {
+      result = String(v1).localeCompare(String(v2));
+    }
+
+    return sortDirection === "asc" ? result : -result;
+  });
+
+  const totalItems = sortedJobs.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+
+  const startIndex = (safePage - 1) * pageSize;
+  const visibleJobs = sortedJobs.slice(startIndex, startIndex + pageSize);
+
+  const startDisplay = totalItems === 0 ? 0 : startIndex + 1;
+  const endDisplay = startIndex + visibleJobs.length;
+
+  const handleSort = (key) => {
+    // Go back to first page when sort changes
+    setCurrentPage(1);
+
+    if (sortKey === key) {
+      // Same column – toggle direction
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      // New column – start with ascending
+      setSortKey(key);
+      setSortDirection("asc");
+    }
+  };
+
+  const renderSortIndicator = (key) => {
+    if (sortKey !== key) return null;
+    return (
+      <span className="ml-1 text-[10px]">
+        {sortDirection === "asc" ? "↑" : "↓"}
+      </span>
+    );
   };
 
   return (
@@ -609,9 +722,66 @@ function JobTracker({ user }) {
 
         {/* Jobs list */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Jobs</h2>
-            <p className="text-xs text-slate-500">Total: {jobs.length}</p>
+          {/* Header + filters */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold">Jobs</h2>
+              <p className="text-xs text-slate-500">
+                Total: {jobs.length}
+                {filteredJobs.length !== jobs.length && (
+                  <span className="ml-2 text-[11px] text-slate-400">
+                    Showing {filteredJobs.length} matching
+                  </span>
+                )}
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              {/* Search */}
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search company, position, notes…"
+                className="w-full sm:w-64 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+              />
+
+              {/* Status filter */}
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+              >
+                <option value="all">All statuses</option>
+                <option value="not_applied">Not applied</option>
+                <option value="pending">Pending</option>
+                <option value="interview">Interview</option>
+                <option value="offer">Offer</option>
+                <option value="rejected">Rejected</option>
+              </select>
+
+              {/* Applied filter */}
+              <select
+                value={appliedFilter}
+                onChange={(e) => setAppliedFilter(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+              >
+                <option value="all">All jobs</option>
+                <option value="applied">Applied only</option>
+                <option value="not_applied_only">Not applied only</option>
+              </select>
+
+              {/* Page size */}
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+              >
+                <option value={10}>10 / page</option>
+                <option value={20}>20 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+            </div>
           </div>
 
           {loading ? (
@@ -620,204 +790,295 @@ function JobTracker({ user }) {
             <p className="text-sm text-slate-500">
               No jobs yet. Add your first one above.
             </p>
+          ) : filteredJobs.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              No jobs match your filters.
+            </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
-                <thead className="bg-slate-50">
-                  <tr className="text-left">
-                    <th className="px-3 py-2 font-semibold text-slate-700">
-                      Company
-                    </th>
-                    <th className="px-3 py-2 font-semibold text-slate-700">
-                      Position
-                    </th>
-                    <th className="px-3 py-2 font-semibold text-slate-700">
-                      Date found
-                    </th>
-                    <th className="px-3 py-2 font-semibold text-slate-700">
-                      Applied
-                    </th>
-                    <th className="px-3 py-2 font-semibold text-slate-700">
-                      Status
-                    </th>
-                    <th className="px-3 py-2 font-semibold text-slate-700">
-                      Actions / Attachments
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {jobs.map((job) => {
-                    const jobAttachments = attachments.filter(
-                      (att) => att.job_id === job.id
-                    );
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
+                  <thead className="bg-slate-50">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 font-semibold text-slate-700">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("company")}
+                          className="inline-flex items-center hover:text-slate-900"
+                        >
+                          Company
+                          {renderSortIndicator("company")}
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 font-semibold text-slate-700">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("position")}
+                          className="inline-flex items-center hover:text-slate-900"
+                        >
+                          Position
+                          {renderSortIndicator("position")}
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 font-semibold text-slate-700 whitespace-nowrap w-[130px]">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("date_found")}
+                          className="inline-flex items-center hover:text-slate-900"
+                        >
+                          Date found
+                          {renderSortIndicator("date_found")}
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 font-semibold text-slate-700">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("applied")}
+                          className="inline-flex items-center hover:text-slate-900"
+                        >
+                          Applied
+                          {renderSortIndicator("applied")}
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 font-semibold text-slate-700">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("status")}
+                          className="inline-flex items-center hover:text-slate-900"
+                        >
+                          Status
+                          {renderSortIndicator("status")}
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 font-semibold text-slate-700">
+                        Actions / Attachments
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {visibleJobs.map((job) => {
+                      const jobAttachments = attachments.filter(
+                        (att) => att.job_id === job.id
+                      );
 
-                    return (
-                      <tr key={job.id} className="hover:bg-slate-50">
-                        <td className="px-3 py-2 align-top">
-                          <div className="font-medium">{job.company}</div>
-                          {job.source_url && (
-                            <a
-                              href={job.source_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-sky-600 hover:underline"
-                            >
-                              View ad
-                            </a>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <div>{job.position}</div>
-                        </td>
-                        <td className="px-3 py-2 align-top whitespace-nowrap">
-                          {job.date_found}
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          {job.applied ? "Yes" : "No"}
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <span
-                            className={
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
-                              statusBadgeClass(job.status)
-                            }
-                          >
-                            {job.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <div className="space-y-2">
-                            <div className="space-x-2">
-                              <button
-                                onClick={() => handleEdit(job)}
-                                className="text-xs text-sky-700 hover:underline"
+                      return (
+                        <tr key={job.id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 align-top">
+                            <div className="font-medium">{job.company}</div>
+                            {job.source_url && (
+                              <a
+                                href={job.source_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs text-sky-600 hover:underline"
                               >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDelete(job.id)}
-                                className="text-xs text-rose-600 hover:underline"
-                              >
-                                Delete
-                              </button>
-                            </div>
-
-                            {/* File upload */}
-                            <div className="mt-1">
-                              <label className="block text-[11px] text-slate-500 mb-1">
-                                Attach file (PDF, DOCX, etc.)
-                              </label>
-                              <input
-                                type="file"
-                                className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
-                                onChange={async (e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-
-                                  const { error, attachment } =
-                                    await uploadJobAttachment(
-                                      file,
-                                      job.id,
-                                      user.id
-                                    );
-
-                                  if (error) {
-                                    console.error(error);
-                                    alert("Failed to upload attachment");
-                                  } else {
-                                    // Merge new attachment into state + cache
-                                    setAttachments((prev) => {
-                                      const updated = [
-                                        attachment,
-                                        ...prev,
-                                      ];
-                                      localStorage.setItem(
-                                        CACHE_ATTACH_KEY,
-                                        JSON.stringify(updated)
-                                      );
-                                      return updated;
-                                    });
-                                  }
-
-                                  e.target.value = "";
-                                }}
-                              />
-                            </div>
-
-                            {/* Attachments list - LINKS ONLY */}
-                            {jobAttachments.length > 0 && (
-                              <div className="mt-1 space-y-1">
-                                {jobAttachments.map((att) => (
-                                  <div
-                                    key={att.id}
-                                    className="flex items-center justify-between gap-2"
-                                  >
-                                    <a
-                                      href={getPublicUrl(att.file_path)}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-[11px] text-sky-700 hover:underline truncate max-w-[150px]"
-                                      title={att.file_name}
-                                    >
-                                      {att.file_name}
-                                    </a>
-                                    <button
-                                      className="text-[10px] text-rose-500 hover:underline"
-                                      onClick={async () => {
-                                        // Delete from storage
-                                        const { error: storageError } =
-                                          await supabase.storage
-                                            .from("job-attachments")
-                                            .remove([att.file_path]);
-
-                                        if (storageError) {
-                                          console.error(storageError);
-                                          alert("Failed to delete file");
-                                          return;
-                                        }
-
-                                        // Delete DB record
-                                        const { error: dbError } =
-                                          await supabase
-                                            .from("job_attachments")
-                                            .delete()
-                                            .eq("id", att.id);
-
-                                        if (dbError) {
-                                          console.error(dbError);
-                                          alert(
-                                            "Failed to delete attachment record"
-                                          );
-                                          return;
-                                        }
-
-                                        // Update local attachments state + cache
-                                        setAttachments((prev) => {
-                                          const updated = prev.filter(
-                                            (x) => x.id !== att.id
-                                          );
-                                          localStorage.setItem(
-                                            CACHE_ATTACH_KEY,
-                                            JSON.stringify(updated)
-                                          );
-                                          return updated;
-                                        });
-                                      }}
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
+                                View ad
+                              </a>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <div>{job.position}</div>
+                          </td>
+                          <td className="px-3 py-2 align-top whitespace-nowrap">
+                            {job.date_found}
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            {job.applied ? "Yes" : "No"}
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <span
+                              className={
+                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
+                                statusBadgeClass(job.status)
+                              }
+                            >
+                              {job.status ?? "not_applied"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 align-top">
+                            <div className="space-y-2">
+                              <div className="space-x-2">
+                                <button
+                                  onClick={() => handleEdit(job)}
+                                  className="text-xs text-sky-700 hover:underline"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(job.id)}
+                                  className="text-xs text-rose-600 hover:underline"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+
+                              {/* File upload */}
+                              <div className="mt-1">
+                                <label className="block text-[11px] text-slate-500 mb-1">
+                                  Attach file (PDF, DOCX, etc.)
+                                </label>
+                                <input
+                                  type="file"
+                                  className="block w-full text-[11px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-slate-100 file:text-slate-700"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+
+                                    const { error, attachment } =
+                                      await uploadJobAttachment(
+                                        file,
+                                        job.id,
+                                        user.id
+                                      );
+
+                                    if (error) {
+                                      console.error(error);
+                                      alert("Failed to upload attachment");
+                                    } else {
+                                      // Merge new attachment into state + cache
+                                      setAttachments((prev) => {
+                                        const updated = [
+                                          attachment,
+                                          ...prev,
+                                        ];
+                                        localStorage.setItem(
+                                          CACHE_ATTACH_KEY,
+                                          JSON.stringify(updated)
+                                        );
+                                        return updated;
+                                      });
+                                    }
+
+                                    e.target.value = "";
+                                  }}
+                                />
+                              </div>
+
+                              {/* Attachments list - LINKS ONLY */}
+                              {jobAttachments.length > 0 && (
+                                <div className="mt-1 space-y-1">
+                                  {jobAttachments.map((att) => (
+                                    <div
+                                      key={att.id}
+                                      className="flex items-center justify-between gap-2"
+                                    >
+                                      <a
+                                        href={getPublicUrl(att.file_path)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[11px] text-sky-700 hover:underline truncate max-w-[150px]"
+                                        title={att.file_name}
+                                      >
+                                        {att.file_name}
+                                      </a>
+                                      <button
+                                        className="text-[10px] text-rose-500 hover:underline"
+                                        onClick={async () => {
+                                          // Delete from storage
+                                          const { error: storageError } =
+                                            await supabase.storage
+                                              .from("job-attachments")
+                                              .remove([att.file_path]);
+
+                                          if (storageError) {
+                                            console.error(storageError);
+                                            alert("Failed to delete file");
+                                            return;
+                                          }
+
+                                          // Delete DB record
+                                          const { error: dbError } =
+                                            await supabase
+                                              .from("job_attachments")
+                                              .delete()
+                                              .eq("id", att.id);
+
+                                          if (dbError) {
+                                            console.error(dbError);
+                                            alert(
+                                              "Failed to delete attachment record"
+                                            );
+                                            return;
+                                          }
+
+                                          // Update local attachments state + cache
+                                          setAttachments((prev) => {
+                                            const updated = prev.filter(
+                                              (x) => x.id !== att.id
+                                            );
+                                            localStorage.setItem(
+                                              CACHE_ATTACH_KEY,
+                                              JSON.stringify(updated)
+                                            );
+                                            return updated;
+                                          });
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination controls */}
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500">
+                <div>
+                  Showing {startDisplay}–{endDisplay} of {totalItems} jobs
+                </div>
+                <div className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={safePage === 1}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs disabled:opacity-40 hover:bg-slate-50"
+                  >
+                    First
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage((p) => Math.max(1, p - 1))
+                    }
+                    disabled={safePage === 1}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs disabled:opacity-40 hover:bg-slate-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-2">
+                    Page {safePage} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage((p) =>
+                        Math.min(totalPages, p + 1)
+                      )
+                    }
+                    disabled={safePage === totalPages}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs disabled:opacity-40 hover:bg-slate-50"
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={safePage === totalPages}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs disabled:opacity-40 hover:bg-slate-50"
+                  >
+                    Last
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </section>
       </main>
